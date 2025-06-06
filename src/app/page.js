@@ -106,7 +106,7 @@ export default function Home() {
             <div className="flex items-center justify-between">
               <div>
                 <h1 className="text-3xl font-bold bg-gradient-to-r from-indigo-600 to-purple-600 bg-clip-text text-transparent">
-                  Class of 2025 Reviews
+                  BSCS 2021-2025
                 </h1>
                 <p className="text-gray-600 mt-1">Share your journey, connect anonymously</p>
               </div>
