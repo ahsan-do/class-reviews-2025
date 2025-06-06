@@ -1,41 +1,20 @@
 "use client";
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Heart, Smile, AlertCircle, Frown, Flame, Plus, TrendingUp, Filter, Star } from 'lucide-react';
+import { database } from './firebase'; // Adjust path if firebase.js is in a different directory
+import { ref, push, onValue, update } from 'firebase/database';
 
 export default function Home() {
-  const [reviews, setReviews] = useState([
-    {
-      id: 1,
-      content: "These 4 years flew by so fast! Grateful for all the late-night study sessions and the friends who became family. To whoever sat next to me in calculus - thanks for sharing your notes, you're a lifesaver! 💙",
-      category: "Heartwarming",
-      reactions: { heart: 15, laugh: 2, surprise: 1, sad: 0, fire: 8 },
-      timestamp: new Date(Date.now() - 86400000),
-      nickname: "Anonymous Owl"
-    },
-    {
-      id: 2,
-      content: "Big shoutout to our group project team in 6 sem! We pulled off that coding assignment despite the crashes and bugs. Also, my bad for spilling chai on your laptop during that all-nighter, hope we're cool now! 😂",
-      category: "Shoutout",
-      reactions: { heart: 23, laugh: 12, surprise: 0, sad: 0, fire: 5 },
-      timestamp: new Date(Date.now() - 172800000),
-      nickname: "Coffee Lover"
-    },
-    {
-      id: 3,
-      content: "I wish I had been braver and talked to more people. There were so many interesting classmates I never got to know. Don't be like me - reach out, make connections, life's too short!",
-      category: "Lessons Learned",
-      reactions: { heart: 18, laugh: 1, surprise: 3, sad: 12, fire: 7 },
-      timestamp: new Date(Date.now() - 259200000),
-      nickname: "Quiet Observer"
-    }
-  ]);
-
+  const [reviews, setReviews] = useState([]);
   const [newReview, setNewReview] = useState({
-    content: '', category: 'General', nickname: ''
+    content: '',
+    category: 'General',
+    nickname: ''
   });
   const [filter, setFilter] = useState('All');
   const [sortBy, setSortBy] = useState('Recent');
   const [showForm, setShowForm] = useState(false);
+  const [error, setError] = useState(null);
 
   const categories = [
     'General', 'Heartwarming', 'Funny Moments', 'Lessons Learned',
@@ -50,28 +29,74 @@ export default function Home() {
     fire: { icon: Flame, label: 'Brutally Honest', color: 'text-orange-500' }
   };
 
+  // Fetch reviews from Firebase
+  useEffect(() => {
+    const reviewsRef = ref(database, 'reviews');
+    onValue(reviewsRef, (snapshot) => {
+      const data = snapshot.val();
+      if (data) {
+        const reviewsArray = Object.entries(data).map(([id, review]) => ({
+          id,
+          ...review,
+          timestamp: new Date(review.timestamp)
+        }));
+        setReviews(reviewsArray);
+        setError(null);
+      } else {
+        setReviews([]);
+        setError(null);
+      }
+    }, (error) => {
+      console.error('Error fetching reviews:', error);
+      setError('Failed to load reviews. Please try again later.');
+    });
+  }, []);
+
+  // Submit new review to Firebase
   const handleSubmitReview = (e) => {
     e.preventDefault();
-    if (!newReview.content.trim()) return;
+    if (!newReview.content.trim()) {
+      setError('Review content cannot be empty.');
+      return;
+    }
+    if (newReview.content.length > 500) {
+      setError('Review content cannot exceed 500 characters.');
+      return;
+    }
+    if (newReview.nickname.length > 50) {
+      setError('Nickname cannot exceed 50 characters.');
+      return;
+    }
     const review = {
-      id: Date.now(),
       content: newReview.content,
       category: newReview.category,
-      nickname: newReview.nickname || `Anonymous ${Math.floor(Math.random() * 100)}`,
+      nickname: newReview.nickname.trim() || `Anonymous ${Math.floor(Math.random() * 100)}`,
       reactions: { heart: 0, laugh: 0, surprise: 0, sad: 0, fire: 0 },
-      timestamp: new Date()
+      timestamp: Date.now()
     };
-    setReviews([review, ...reviews]);
-    setNewReview({ content: '', category: 'General', nickname: '' });
-    setShowForm(false);
+    const reviewsRef = ref(database, 'reviews');
+    push(reviewsRef, review)
+        .then(() => {
+          setNewReview({ content: '', category: 'General', nickname: '' });
+          setShowForm(false);
+          setError(null);
+        })
+        .catch((error) => {
+          console.error('Error adding review:', error);
+          setError('Failed to submit review. Please try again.');
+        });
   };
 
+  // Handle reactions
   const handleReaction = (reviewId, reactionType) => {
-    setReviews(reviews.map(review =>
-        review.id === reviewId
-            ? { ...review, reactions: { ...review.reactions, [reactionType]: review.reactions[reactionType] + 1 } }
-            : review
-    ));
+    const reviewRef = ref(database, `reviews/${reviewId}/reactions`);
+    const currentReview = reviews.find(r => r.id === reviewId);
+    update(reviewRef, {
+      [reactionType]: (currentReview?.reactions[reactionType] || 0) + 1
+    }).catch((error) => {
+      console.error('Error updating reaction:', error);
+      setError('Failed to add reaction. Please try again.');
+    });
   };
 
   const getFilteredAndSortedReviews = () => {
@@ -122,6 +147,13 @@ export default function Home() {
         </div>
 
         <div className="max-w-4xl mx-auto px-4 py-8">
+          {/* Error Message */}
+          {error && (
+              <div className="bg-red-100 text-red-700 px-4 py-3 rounded-xl mb-8">
+                {error}
+              </div>
+          )}
+
           {/* New Review Form */}
           {showForm && (
               <div className="bg-white rounded-2xl shadow-xl p-8 mb-8 border border-gray-100">
@@ -136,6 +168,7 @@ export default function Home() {
                         value={newReview.nickname}
                         onChange={(e) => setNewReview({ ...newReview, nickname: e.target.value })}
                         placeholder="e.g., Coffee Lover, Night Owl..."
+                        maxLength={50}
                         className="w-full px-4 py-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition-all"
                     />
                   </div>
@@ -160,9 +193,13 @@ export default function Home() {
                         onChange={(e) => setNewReview({ ...newReview, content: e.target.value })}
                         placeholder="Share your thoughts about these 4 years, give shoutouts, or leave messages for classmates..."
                         rows={5}
+                        maxLength={500}
                         className="w-full px-4 py-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition-all resize-none"
                         required
                     />
+                    <p className="text-sm text-gray-500 mt-1">
+                      {newReview.content.length}/500 characters
+                    </p>
                   </div>
                   <div className="flex gap-3">
                     <button
@@ -172,7 +209,10 @@ export default function Home() {
                       Post Anonymously
                     </button>
                     <button
-                        onClick={() => setShowForm(false)}
+                        onClick={() => {
+                          setShowForm(false);
+                          setError(null);
+                        }}
                         className="bg-gray-100 text-gray-700 px-8 py-3 rounded-xl font-semibold hover:bg-gray-200 transition-all duration-200"
                     >
                       Cancel
@@ -281,8 +321,8 @@ export default function Home() {
         {/* Footer */}
         <footer className="bg-white border-t border-gray-200 mt-16">
           <div className="max-w-4xl mx-auto px-4 py-8 text-center">
-            <p className="text-gray-600">Made with ❤️ for the Class of 2025</p>
-            <p className="text-sm text-gray-500 mt-2">All reviews are anonymous and stored locally</p>
+            <p className="text-gray-600">Made with ❤️ for the Class of BSCS 2021-25</p>
+            <p className="text-sm text-gray-500 mt-2">All reviews are anonymous and stored securely</p>
           </div>
         </footer>
       </div>
