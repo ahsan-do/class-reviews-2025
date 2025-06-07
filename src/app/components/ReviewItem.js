@@ -1,7 +1,7 @@
 // src/app/components/ReviewItem.js
 import React, { useState } from 'react';
 import { Star, MoreVertical } from 'lucide-react';
-import { databases, storage } from '../appwriteClient';
+import { databases, storage } from '../appwrite';
 import Image from 'next/image'; // Import Image from next/image
 
 // Color mapping for categories
@@ -175,7 +175,7 @@ const ReviewItem = ({ review, reactionIcons, handleReaction, getTotalReactions, 
                         alt="Review memory"
                         width={400} // Adjust width as needed
                         height={200} // Adjust height as needed
-                        className="w-48 h-48 object-cover rounded-md mb-6 cursor-pointer"
+                        className="w-full h-48 object-cover rounded-md mb-6 cursor-pointer"
                         onClick={() => setIsImageEnlarged(true)}
                         onError={(e) => console.error('Image load error:', { url: review.imageUrl, error: e })}
                     />

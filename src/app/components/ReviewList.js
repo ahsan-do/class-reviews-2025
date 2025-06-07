@@ -1,10 +1,18 @@
 // src/app/components/ReviewList.js
-import React from 'react';
 import ReviewItem from './ReviewItem';
 
-const ReviewList = ({ reviews, reactionIcons, handleReaction, getTotalReactions, getTopReaction, fetchReviews }) => {
+const ReviewList = ({
+                        reviews,
+                        reactionIcons,
+                        handleReaction,
+                        getTotalReactions,
+                        getTopReaction,
+                        fetchReviews,
+                        databases,
+                        storage,
+                    }) => {
     return (
-        <div>
+        <div className="space-y-6">
             {reviews.map((review) => (
                 <ReviewItem
                     key={review.id}
@@ -13,7 +21,9 @@ const ReviewList = ({ reviews, reactionIcons, handleReaction, getTotalReactions,
                     handleReaction={handleReaction}
                     getTotalReactions={getTotalReactions}
                     getTopReaction={getTopReaction}
-                    fetchReviews={fetchReviews} // Pass fetchReviews to ReviewItem
+                    databases={databases}
+                    storage={storage}
+                    fetchReviews={fetchReviews}
                 />
             ))}
         </div>
