@@ -1,6 +1,6 @@
 // src/app/components/ReviewForm.js
 import { forwardRef } from 'react';
-import { X } from 'lucide-react';
+import { X, Loader2 } from 'lucide-react'; // Import Loader2
 
 const ReviewForm = forwardRef(({ showForm, newReview, setNewReview, categories, handleSubmitReview, setShowForm, setError, isLoading, className }, ref) => {
     return (
@@ -79,5 +79,8 @@ const ReviewForm = forwardRef(({ showForm, newReview, setNewReview, categories, 
         </div>
     );
 });
+
+// Add display name for better debugging
+ReviewForm.displayName = 'ReviewForm';
 
 export default ReviewForm;
