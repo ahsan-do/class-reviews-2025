@@ -3,7 +3,7 @@ import React, { forwardRef, useImperativeHandle, useRef } from 'react';
 import { Loader2 } from 'lucide-react';
 
 const ReviewForm = forwardRef(({ showForm, newReview, setNewReview, categories, handleSubmitReview, setShowForm, setError, isLoading }, ref) => {
-    const formRef = useRef(null); // Create a ref for the form DOM element
+    const formRef = useRef(null);
 
     useImperativeHandle(ref, () => ({
         scrollIntoView: () => {
@@ -11,7 +11,7 @@ const ReviewForm = forwardRef(({ showForm, newReview, setNewReview, categories, 
                 formRef.current.scrollIntoView({ behavior: 'smooth' });
             }
         },
-    }), []); // Empty dependency array to prevent re-renders
+    }), []);
 
     const handleChange = (e) => {
         const { name, value } = e.target;
@@ -92,5 +92,8 @@ const ReviewForm = forwardRef(({ showForm, newReview, setNewReview, categories, 
         </div>
     );
 });
+
+// Assign a display name
+ReviewForm.displayName = 'ReviewForm';
 
 export default ReviewForm;

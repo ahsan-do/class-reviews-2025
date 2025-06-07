@@ -1,7 +1,8 @@
 // src/app/components/ReviewItem.js
 import React, { useState } from 'react';
 import { Star, MoreVertical } from 'lucide-react';
-import { databases, storage } from '../appwrite'; // Adjust the import path as needed
+import { databases, storage } from '../appwrite';
+import Image from 'next/image'; // Import Image from next/image
 
 // Color mapping for categories
 const categoryColors = {
@@ -22,16 +23,16 @@ const ReviewItem = ({ review, reactionIcons, handleReaction, getTotalReactions, 
     const [editedContent, setEditedContent] = useState(review.content);
     const [editedCategory, setEditedCategory] = useState(review.category);
     const [isMenuOpen, setIsMenuOpen] = useState(false);
-    const categoryColor = categoryColors[editedCategory] || 'bg-gray-200 text-gray-800'; // Use edited category for color
+    const categoryColor = categoryColors[editedCategory] || 'bg-gray-200 text-gray-800';
 
-    console.log('Review imageUrl:', review.imageUrl); // Debug log
+    console.log('Review imageUrl:', review.imageUrl);
 
     const handleUpdate = async (e) => {
         e.preventDefault();
         try {
             await databases.updateDocument(
-                process.env.NEXT_PUBLIC_APPWRITE_DATABASE_ID, // Use env variable
-                process.env.NEXT_PUBLIC_APPWRITE_COLLECTION_ID, // Use env variable
+                process.env.NEXT_PUBLIC_APPWRITE_DATABASE_ID,
+                process.env.NEXT_PUBLIC_APPWRITE_COLLECTION_ID,
                 review.id,
                 {
                     content: editedContent,
@@ -39,8 +40,8 @@ const ReviewItem = ({ review, reactionIcons, handleReaction, getTotalReactions, 
                 }
             );
             setIsEditing(false);
-            setIsMenuOpen(false); // Close menu after update
-            fetchReviews(); // Refresh the review list
+            setIsMenuOpen(false);
+            fetchReviews();
         } catch (err) {
             console.error('Error updating review:', err);
         }
@@ -49,28 +50,24 @@ const ReviewItem = ({ review, reactionIcons, handleReaction, getTotalReactions, 
     const handleDelete = async () => {
         if (window.confirm('Are you sure you want to delete this review?')) {
             try {
-                // Delete the image if it exists
                 if (review.imageUrl) {
                     const urlParts = review.imageUrl.split('/');
-                    const fileId = urlParts[urlParts.length - 2]; // Extract file ID from the URL
+                    const fileId = urlParts[urlParts.length - 2];
                     await storage.deleteFile(
-                        process.env.NEXT_PUBLIC_APPWRITE_BUCKET_ID, // Use env variable
+                        process.env.NEXT_PUBLIC_APPWRITE_BUCKET_ID,
                         fileId
                     );
                     console.log('Image deleted successfully:', fileId);
                 }
-
-                // Delete the review document
                 await databases.deleteDocument(
-                    process.env.NEXT_PUBLIC_APPWRITE_DATABASE_ID, // Use env variable
-                    process.env.NEXT_PUBLIC_APPWRITE_COLLECTION_ID, // Use env variable
+                    process.env.NEXT_PUBLIC_APPWRITE_DATABASE_ID,
+                    process.env.NEXT_PUBLIC_APPWRITE_COLLECTION_ID,
                     review.id
                 );
-                setIsMenuOpen(false); // Close menu after delete
-                fetchReviews(); // Refresh the review list
+                setIsMenuOpen(false);
+                fetchReviews();
             } catch (err) {
                 console.error('Error deleting review or image:', err);
-                // Optionally, notify the user if deletion fails
             }
         }
     };
@@ -116,7 +113,7 @@ const ReviewItem = ({ review, reactionIcons, handleReaction, getTotalReactions, 
                 <div className="relative">
                     <button
                         onClick={() => setIsMenuOpen(!isMenuOpen)}
-                        className="text-gray-500 hover:text-gray-700 p-1 cursor-pointer"
+                        className="text-gray-500 hover:text-gray-700 p-1"
                     >
                         <MoreVertical size={20} />
                     </button>
@@ -161,7 +158,7 @@ const ReviewItem = ({ review, reactionIcons, handleReaction, getTotalReactions, 
                             setIsEditing(false);
                             setEditedContent(review.content);
                             setEditedCategory(review.category);
-                            setIsMenuOpen(false); // Close menu on cancel
+                            setIsMenuOpen(false);
                         }}
                         className="ml-2 text-gray-500 hover:text-gray-700"
                     >
@@ -173,9 +170,11 @@ const ReviewItem = ({ review, reactionIcons, handleReaction, getTotalReactions, 
             )}
             {review.imageUrl && (
                 <>
-                    <img
+                    <Image
                         src={review.imageUrl}
                         alt="Review memory"
+                        width={400} // Adjust width as needed
+                        height={200} // Adjust height as needed
                         className="w-48 h-48 object-cover rounded-md mb-6 cursor-pointer"
                         onClick={() => setIsImageEnlarged(true)}
                         onError={(e) => console.error('Image load error:', { url: review.imageUrl, error: e })}
@@ -185,11 +184,13 @@ const ReviewItem = ({ review, reactionIcons, handleReaction, getTotalReactions, 
                             className="fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center z-50"
                             onClick={() => setIsImageEnlarged(false)}
                         >
-                            <img
+                            <Image
                                 src={review.imageUrl}
                                 alt="Enlarged review memory"
+                                width={800} // Adjust width for enlarged view
+                                height={600} // Adjust height for enlarged view
                                 className="max-h-full max-w-full"
-                                onClick={(e) => e.stopPropagation()} // Prevent closing when clicking the image
+                                onClick={(e) => e.stopPropagation()}
                             />
                             <button
                                 className="absolute top-4 right-4 text-white text-2xl"
