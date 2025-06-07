@@ -1,8 +1,8 @@
 "use client";
 import { useState, useEffect, useRef } from 'react';
-import {Heart, Smile, AlertCircle, Frown, Flame, Filter} from 'lucide-react';
+import { Heart, Smile, AlertCircle, Frown, Flame, Filter } from 'lucide-react';
 import { database } from './firebase';
-import { ref, push, onValue, update } from 'firebase/database';
+import { ref, push, onValue, update, get } from 'firebase/database'; // Added 'get' here
 import Header from './components/Header';
 import ReviewForm from './components/ReviewForm';
 import Filters from './components/Filters';
@@ -21,6 +21,9 @@ export default function Home() {
   const [showForm, setShowForm] = useState(false);
   const [error, setError] = useState(null);
   const formRef = useRef(null);
+
+  // Track user reaction counts (simplified, in-memory)
+  const [userReactionCounts, setUserReactionCounts] = useState({});
 
   const categories = [
     'General', 'Heartwarming', 'Funny Moments', 'Lessons Learned',
@@ -92,13 +95,43 @@ export default function Home() {
   };
 
   const handleReaction = (reviewId, reactionType) => {
-    const reviewRef = ref(database, `reviews/${reviewId}/reactions`);
-    const currentReview = reviews.find(r => r.id === reviewId);
-    update(reviewRef, {
-      [reactionType]: (currentReview?.reactions[reactionType] || 0) + 1
+    const userId = 'anonymousUser'; // Static user ID for now
+    const userCount = userReactionCounts[userId] || 0;
+
+    if (userCount >= 5) {
+      setError('You have reached the maximum of 5 reactions per user.');
+      return;
+    }
+
+    console.log('Updating reaction for:', reviewId, reactionType);
+    const reviewRef = ref(database, `reviews/${reviewId}`);
+    get(reviewRef).then((snapshot) => {
+      if (!snapshot.exists()) return;
+      const review = snapshot.val();
+      const userReactions = review.userReactions || {};
+      const currentUserReaction = userReactions[userId];
+
+      const updates = {};
+      if (currentUserReaction === reactionType) {
+        updates[`reactions/${reactionType}`] = Math.max(0, (review.reactions[reactionType] || 0) - 1);
+        updates[`userReactions/${userId}`] = null;
+        setUserReactionCounts(prev => ({ ...prev, [userId]: userCount - 1 }));
+      } else {
+        if (currentUserReaction) {
+          updates[`reactions/${currentUserReaction}`] = Math.max(0, (review.reactions[currentUserReaction] || 0) - 1);
+        }
+        updates[`reactions/${reactionType}`] = (review.reactions[reactionType] || 0) + 1;
+        updates[`userReactions/${userId}`] = reactionType;
+        setUserReactionCounts(prev => ({ ...prev, [userId]: userCount + 1 }));
+      }
+
+      update(reviewRef, updates).catch((error) => {
+        console.error('Error updating reaction:', error);
+        setError('Failed to add reaction. Please try again.');
+      });
     }).catch((error) => {
-      console.error('Error updating reaction:', error);
-      setError('Failed to add reaction. Please try again.');
+      console.error('Error fetching review:', error);
+      setError('Failed to load review data.');
     });
   };
 
