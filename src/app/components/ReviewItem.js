@@ -1,8 +1,7 @@
 // src/app/components/ReviewItem.js
 import React, { useState } from 'react';
 import { Star, MoreVertical } from 'lucide-react';
-import { databases, storage } from '../appwriteClient';
-import Image from 'next/image'; // Import Image from next/image
+import Image from 'next/image';
 
 // Color mapping for categories
 const categoryColors = {
@@ -16,7 +15,7 @@ const categoryColors = {
     'Future Goals': 'bg-blue-100 text-blue-800',
 };
 
-const ReviewItem = ({ review, reactionIcons, handleReaction, getTotalReactions, getTopReaction, fetchReviews }) => {
+const ReviewItem = ({ review, reactionIcons, handleReaction, getTotalReactions, getTopReaction, fetchReviews, databases, storage }) => {
     const nickname = review.nickname || `Anonymous_${Math.floor(Math.random() * 100)}`;
     const [isImageEnlarged, setIsImageEnlarged] = useState(false);
     const [isEditing, setIsEditing] = useState(false);
@@ -29,6 +28,10 @@ const ReviewItem = ({ review, reactionIcons, handleReaction, getTotalReactions, 
 
     const handleUpdate = async (e) => {
         e.preventDefault();
+        if (!databases) {
+            console.error('Databases not available');
+            return;
+        }
         try {
             await databases.updateDocument(
                 process.env.NEXT_PUBLIC_APPWRITE_DATABASE_ID,
@@ -49,6 +52,10 @@ const ReviewItem = ({ review, reactionIcons, handleReaction, getTotalReactions, 
 
     const handleDelete = async () => {
         if (window.confirm('Are you sure you want to delete this review?')) {
+            if (!databases || !storage) {
+                console.error('Databases or storage not available');
+                return;
+            }
             try {
                 if (review.imageUrl) {
                     const urlParts = review.imageUrl.split('/');
@@ -82,23 +89,23 @@ const ReviewItem = ({ review, reactionIcons, handleReaction, getTotalReactions, 
                     <div>
                         <p className="font-semibold text-gray-800">{nickname}</p>
                         <div className="flex items-center gap-2 text-sm text-gray-500">
-              <span className={`${categoryColor} px-2 py-1 rounded-full text-xs font-medium`}>
-                {isEditing ? (
-                    <select
-                        value={editedCategory}
-                        onChange={(e) => setEditedCategory(e.target.value)}
-                        className={`${categoryColor.replace('text-', 'text-')} px-2 py-1 rounded-full text-xs font-medium`}
-                    >
-                        {Object.keys(categoryColors).map((cat) => (
-                            <option key={cat} value={cat}>
-                                {cat}
-                            </option>
-                        ))}
-                    </select>
-                ) : (
-                    editedCategory
-                )}
-              </span>
+                            <span className={`${categoryColor} px-2 py-1 rounded-full text-xs font-medium`}>
+                                {isEditing ? (
+                                    <select
+                                        value={editedCategory}
+                                        onChange={(e) => setEditedCategory(e.target.value)}
+                                        className={`${categoryColor.replace('text-', 'text-')} px-2 py-1 rounded-full text-xs font-medium`}
+                                    >
+                                        {Object.keys(categoryColors).map((cat) => (
+                                            <option key={cat} value={cat}>
+                                                {cat}
+                                            </option>
+                                        ))}
+                                    </select>
+                                ) : (
+                                    editedCategory
+                                )}
+                            </span>
                             <span>•</span>
                             <span>{new Date(review.timestamp).toLocaleDateString()}</span>
                         </div>
@@ -140,12 +147,12 @@ const ReviewItem = ({ review, reactionIcons, handleReaction, getTotalReactions, 
             </div>
             {isEditing ? (
                 <form onSubmit={handleUpdate} className="mb-6">
-          <textarea
-              value={editedContent}
-              onChange={(e) => setEditedContent(e.target.value)}
-              className="w-full p-2 border border-gray-300 rounded-md mb-2 text-gray-800 leading-relaxed text-base sm:text-lg"
-              rows="4"
-          />
+                    <textarea
+                        value={editedContent}
+                        onChange={(e) => setEditedContent(e.target.value)}
+                        className="w-full p-2 border border-gray-300 rounded-md mb-2 text-gray-800 leading-relaxed text-base sm:text-lg"
+                        rows="4"
+                    />
                     <button
                         type="submit"
                         className="bg-blue-500 text-white px-4 py-2 rounded-md hover:bg-blue-600"
@@ -173,9 +180,9 @@ const ReviewItem = ({ review, reactionIcons, handleReaction, getTotalReactions, 
                     <Image
                         src={review.imageUrl}
                         alt="Review memory"
-                        width={400} // Adjust width as needed
-                        height={200} // Adjust height as needed
-                        className="w-full h-48 object-cover rounded-md mb-6 cursor-pointer"
+                        width={400}
+                        height={200}
+                        className="w-48 h-48 object-cover rounded-md mb-6 cursor-pointer"
                         onClick={() => setIsImageEnlarged(true)}
                         onError={(e) => console.error('Image load error:', { url: review.imageUrl, error: e })}
                     />
@@ -187,8 +194,8 @@ const ReviewItem = ({ review, reactionIcons, handleReaction, getTotalReactions, 
                             <Image
                                 src={review.imageUrl}
                                 alt="Enlarged review memory"
-                                width={800} // Adjust width for enlarged view
-                                height={600} // Adjust height for enlarged view
+                                width={800}
+                                height={600}
                                 className="max-h-full max-w-full"
                                 onClick={(e) => e.stopPropagation()}
                             />
@@ -216,8 +223,8 @@ const ReviewItem = ({ review, reactionIcons, handleReaction, getTotalReactions, 
                         <Icon size={16} className={`${color} group-hover:scale-110 transition-transform`} />
                         {review.reactions[key] > 0 && (
                             <span className="text-sm font-semibold text-gray-700">
-                {review.reactions[key]}
-              </span>
+                                {review.reactions[key]}
+                            </span>
                         )}
                     </button>
                 ))}

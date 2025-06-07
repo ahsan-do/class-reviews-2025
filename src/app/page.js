@@ -2,33 +2,11 @@
 "use client";
 import { useState, useEffect, useRef } from 'react';
 import { Heart, Smile, AlertCircle, Frown, Flame, Filter, Loader2 } from 'lucide-react';
-import dynamic from 'next/dynamic';
 import Header from './components/Header';
 import ReviewForm from './components/ReviewForm';
 import Filters from './components/Filters';
 import ReviewList from './components/ReviewList';
 import Footer from './components/Footer';
-
-// Use dynamic import with explicit module resolution and error handling
-const loadAppwriteClient = () => {
-  return import('./appwriteClient').then((mod) => {
-    const init = mod.default;
-    if (typeof init !== 'function') {
-      console.error('Invalid AppwriteClient export, expected function, got:', init);
-      throw new Error('Invalid AppwriteClient module export');
-    }
-    console.log('Loaded AppwriteClient module, default export:', init);
-    return init;
-  }).catch((err) => {
-    console.error('Failed to load AppwriteClient module:', err);
-    return () => null; // Fallback to return null if import fails
-  });
-};
-
-const AppwriteClient = dynamic(loadAppwriteClient, {
-  ssr: false,
-  loading: () => <div>Loading Appwrite client...</div>,
-});
 
 export default function Home() {
   const [reviews, setReviews] = useState([]);
@@ -44,6 +22,7 @@ export default function Home() {
   const [error, setError] = useState(null);
   const [isLoading, setIsLoading] = useState(false);
   const [appwrite, setAppwrite] = useState(null);
+  const [isInitializing, setIsInitializing] = useState(true);
   const formRef = useRef(null);
 
   const categories = [
@@ -63,41 +42,64 @@ export default function Home() {
     let isMounted = true;
 
     const initializeAndFetch = async () => {
-      const appwriteInstance = await AppwriteClient();
-      console.log('Appwrite instance after initialization:', appwriteInstance);
-      if (!appwriteInstance || !appwriteInstance.databases || typeof appwriteInstance.databases.listDocuments !== 'function') {
-        console.error('Appwrite initialization failed, returned:', appwriteInstance);
-        setError('Failed to initialize Appwrite client. Check console for details.');
-        return;
-      }
-
-      setAppwrite(appwriteInstance);
-      const { databases, Query } = appwriteInstance;
       try {
-        const response = await databases.listDocuments(
-            process.env.NEXT_PUBLIC_APPWRITE_DATABASE_ID,
-            process.env.NEXT_PUBLIC_APPWRITE_COLLECTION_ID,
-            [Query.orderDesc('$createdAt')],
-        );
-        if (isMounted) {
-          setReviews(
-              response.documents.map((doc) => ({
-                id: doc.$id,
-                content: doc.content,
-                category: doc.category,
-                nickname: doc.nickname || `Anonymous_${Math.floor(Math.random() * 100)}`,
-                imageUrl: doc.imageUrl,
-                reactions: JSON.parse(doc.reaction || '{}'),
-                timestamp: new Date(doc.$createdAt),
-                userReactions: JSON.parse(doc.userReactions || '{}'),
-              })),
-          );
-          setError(null);
+        // Dynamic import the initialization function
+        const { default: initializeAppwrite } = await import('./appwriteClient');
+
+        // Call the initialization function
+        const appwriteInstance = initializeAppwrite();
+
+        console.log('Appwrite instance after initialization:', appwriteInstance);
+
+        if (!appwriteInstance || !appwriteInstance.databases || typeof appwriteInstance.databases.listDocuments !== 'function') {
+          console.error('Appwrite initialization failed, returned:', appwriteInstance);
+          if (isMounted) {
+            setError('Failed to initialize Appwrite client. Check console for details.');
+            setIsInitializing(false);
+          }
+          return;
         }
-      } catch (err) {
+
         if (isMounted) {
-          console.error('Error fetching reviews:', err);
-          setError('Failed to load reviews. Please try again.');
+          setAppwrite(appwriteInstance);
+          setIsInitializing(false);
+        }
+
+        // Fetch reviews
+        const { databases, Query } = appwriteInstance;
+        try {
+          const response = await databases.listDocuments(
+              process.env.NEXT_PUBLIC_APPWRITE_DATABASE_ID,
+              process.env.NEXT_PUBLIC_APPWRITE_COLLECTION_ID,
+              [Query.orderDesc('$createdAt')],
+          );
+
+          if (isMounted) {
+            setReviews(
+                response.documents.map((doc) => ({
+                  id: doc.$id,
+                  content: doc.content,
+                  category: doc.category,
+                  nickname: doc.nickname || `Anonymous_${Math.floor(Math.random() * 100)}`,
+                  imageUrl: doc.imageUrl,
+                  reactions: JSON.parse(doc.reaction || '{}'),
+                  timestamp: new Date(doc.$createdAt),
+                  userReactions: JSON.parse(doc.userReactions || '{}'),
+                })),
+            );
+            setError(null);
+          }
+        } catch (err) {
+          if (isMounted) {
+            console.error('Error fetching reviews:', err);
+            setError('Failed to load reviews. Please try again.');
+          }
+        }
+      } catch (importError) {
+        console.error('Error importing Appwrite client:', importError);
+        if (isMounted) {
+          setError('Failed to load Appwrite client module.');
+          setIsInitializing(false);
         }
       }
     };
@@ -188,32 +190,40 @@ export default function Home() {
       setError('Failed to submit review. Please try again.');
     } finally {
       setIsLoading(false);
-      const fetchReviews = async () => {
-        try {
-          const response = await databases.listDocuments(
-              process.env.NEXT_PUBLIC_APPWRITE_DATABASE_ID,
-              process.env.NEXT_PUBLIC_APPWRITE_COLLECTION_ID,
-              [Query.orderDesc('$createdAt')],
-          );
-          setReviews(
-              response.documents.map((doc) => ({
-                id: doc.$id,
-                content: doc.content,
-                category: doc.category,
-                nickname: doc.nickname || `Anonymous_${Math.floor(Math.random() * 100)}`,
-                imageUrl: doc.imageUrl,
-                reactions: JSON.parse(doc.reaction || '{}'),
-                timestamp: new Date(doc.$createdAt),
-                userReactions: JSON.parse(doc.userReactions || '{}'),
-              })),
-          );
-          setError(null);
-        } catch (err) {
-          console.error('Error fetching reviews:', err);
-          setError('Failed to load reviews. Please try again.');
-        }
-      };
-      fetchReviews();
+      // Refresh reviews after submission
+      await fetchReviews();
+    }
+  };
+
+  const fetchReviews = async () => {
+    if (!appwrite) {
+      setError('Appwrite client not initialized.');
+      return;
+    }
+
+    const { databases, Query } = appwrite;
+    try {
+      const response = await databases.listDocuments(
+          process.env.NEXT_PUBLIC_APPWRITE_DATABASE_ID,
+          process.env.NEXT_PUBLIC_APPWRITE_COLLECTION_ID,
+          [Query.orderDesc('$createdAt')],
+      );
+      setReviews(
+          response.documents.map((doc) => ({
+            id: doc.$id,
+            content: doc.content,
+            category: doc.category,
+            nickname: doc.nickname || `Anonymous_${Math.floor(Math.random() * 100)}`,
+            imageUrl: doc.imageUrl,
+            reactions: JSON.parse(doc.reaction || '{}'),
+            timestamp: new Date(doc.$createdAt),
+            userReactions: JSON.parse(doc.userReactions || '{}'),
+          })),
+      );
+      setError(null);
+    } catch (err) {
+      console.error('Error fetching reviews:', err);
+      setError('Failed to load reviews. Please try again.');
     }
   };
 
@@ -263,32 +273,7 @@ export default function Home() {
           reviewId,
           updates,
       );
-      const fetchReviews = async () => {
-        try {
-          const response = await databases.listDocuments(
-              process.env.NEXT_PUBLIC_APPWRITE_DATABASE_ID,
-              process.env.NEXT_PUBLIC_APPWRITE_COLLECTION_ID,
-              [Query.orderDesc('$createdAt')],
-          );
-          setReviews(
-              response.documents.map((doc) => ({
-                id: doc.$id,
-                content: doc.content,
-                category: doc.category,
-                nickname: doc.nickname || `Anonymous_${Math.floor(Math.random() * 100)}`,
-                imageUrl: doc.imageUrl,
-                reactions: JSON.parse(doc.reaction || '{}'),
-                timestamp: new Date(doc.$createdAt),
-                userReactions: JSON.parse(doc.userReactions || '{}'),
-              })),
-          );
-          setError(null);
-        } catch (err) {
-          console.error('Error fetching reviews:', err);
-          setError('Failed to load reviews. Please try again.');
-        }
-      };
-      fetchReviews();
+      await fetchReviews();
     } catch (err) {
       console.error('Error updating reaction:', err);
       setError('Failed to add reaction. Please try again.');
@@ -325,6 +310,18 @@ export default function Home() {
     }
   }, [showForm]);
 
+  // Show loading state while initializing
+  if (isInitializing) {
+    return (
+        <div className="min-h-screen bg-gradient-to-br from-indigo-50 via-white to-purple-50 flex items-center justify-center">
+          <div className="text-center">
+            <Loader2 className="animate-spin h-8 w-8 mx-auto mb-4 text-indigo-600" />
+            <p className="text-gray-600">Initializing application...</p>
+          </div>
+        </div>
+    );
+  }
+
   return (
       <div className="min-h-screen bg-gradient-to-br from-indigo-50 via-white to-purple-50">
         <Header showForm={showForm} setShowForm={setShowForm} />
@@ -348,39 +345,7 @@ export default function Home() {
               handleReaction={handleReaction}
               getTotalReactions={getTotalReactions}
               getTopReaction={getTopReaction}
-              fetchReviews={() => {
-                if (!appwrite) {
-                  setError('Appwrite client not initialized.');
-                  return;
-                }
-                const { databases, Query } = appwrite;
-                const fetchData = async () => {
-                  try {
-                    const response = await databases.listDocuments(
-                        process.env.NEXT_PUBLIC_APPWRITE_DATABASE_ID,
-                        process.env.NEXT_PUBLIC_APPWRITE_COLLECTION_ID,
-                        [Query.orderDesc('$createdAt')],
-                    );
-                    setReviews(
-                        response.documents.map((doc) => ({
-                          id: doc.$id,
-                          content: doc.content,
-                          category: doc.category,
-                          nickname: doc.nickname || `Anonymous_${Math.floor(Math.random() * 100)}`,
-                          imageUrl: doc.imageUrl,
-                          reactions: JSON.parse(doc.reaction || '{}'),
-                          timestamp: new Date(doc.$createdAt),
-                          userReactions: JSON.parse(doc.userReactions || '{}'),
-                        })),
-                    );
-                    setError(null);
-                  } catch (err) {
-                    console.error('Error fetching reviews:', err);
-                    setError('Failed to load reviews. Please try again.');
-                  }
-                };
-                fetchData();
-              }}
+              fetchReviews={fetchReviews}
               databases={appwrite?.databases || null}
               storage={appwrite?.storage || null}
           />

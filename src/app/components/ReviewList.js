@@ -21,9 +21,9 @@ const ReviewList = ({
                     handleReaction={handleReaction}
                     getTotalReactions={getTotalReactions}
                     getTopReaction={getTopReaction}
+                    fetchReviews={fetchReviews}
                     databases={databases}
                     storage={storage}
-                    fetchReviews={fetchReviews}
                 />
             ))}
         </div>
