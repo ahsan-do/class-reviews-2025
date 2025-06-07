@@ -8,6 +8,9 @@ import Filters from './components/Filters';
 import ReviewList from './components/ReviewList';
 import Footer from './components/Footer';
 
+// Optional: Force dynamic rendering to avoid prerendering issues
+export const dynamic = 'force-dynamic';
+
 export default function Home() {
   const [reviews, setReviews] = useState([]);
   const [newReview, setNewReview] = useState({
@@ -23,7 +26,8 @@ export default function Home() {
   const [isLoading, setIsLoading] = useState(false);
   const [appwrite, setAppwrite] = useState(null);
   const [isInitializing, setIsInitializing] = useState(true);
-  const formRef = useRef(null);
+  const isClientReady = useRef(false); // Track client-side readiness
+  const formRef = useRef(null); // Define formRef here
 
   const categories = [
     'General', 'Heartwarming', 'Funny Moments', 'Lessons Learned',
@@ -42,13 +46,18 @@ export default function Home() {
     let isMounted = true;
 
     const initializeAndFetch = async () => {
+      if (!isClientReady.current) {
+        console.log('Waiting for client-side context...');
+        return; // Wait until client is ready
+      }
+
       try {
         // Dynamic import the initialization function
         const { default: initializeAppwrite } = await import('./appwriteClient');
+        console.log('Loaded initializeAppwrite function:', initializeAppwrite);
 
         // Call the initialization function
         const appwriteInstance = initializeAppwrite();
-
         console.log('Appwrite instance after initialization:', appwriteInstance);
 
         if (!appwriteInstance || !appwriteInstance.databases || typeof appwriteInstance.databases.listDocuments !== 'function') {
@@ -104,6 +113,8 @@ export default function Home() {
       }
     };
 
+    // Set client-ready flag and trigger initialization
+    isClientReady.current = true;
     initializeAndFetch();
 
     return () => {
@@ -190,7 +201,6 @@ export default function Home() {
       setError('Failed to submit review. Please try again.');
     } finally {
       setIsLoading(false);
-      // Refresh reviews after submission
       await fetchReviews();
     }
   };
@@ -337,6 +347,7 @@ export default function Home() {
               setShowForm={setShowForm}
               setError={setError}
               isLoading={isLoading}
+              className={`transition-all duration-300 ${showForm ? 'opacity-100 h-auto' : 'opacity-0 h-0 overflow-hidden'}`}
           />
           <Filters filter={filter} setFilter={setFilter} sortBy={sortBy} setSortBy={setSortBy} />
           <ReviewList
@@ -349,7 +360,7 @@ export default function Home() {
               databases={appwrite?.databases || null}
               storage={appwrite?.storage || null}
           />
-          {getFilteredAndSortedReviews().length === 0 && (
+          {getFilteredAndSortedReviews().length === 0 && !isInitializing && (
               <div className="text-center py-16">
                 <div className="w-16 h-16 bg-gray-100 rounded-full flex items-center justify-center mx-auto mb-4">
                   <Filter size={24} className="text-gray-400" />

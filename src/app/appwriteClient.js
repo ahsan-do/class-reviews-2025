@@ -3,7 +3,6 @@ import { Client, Account, Databases, Storage, ID, Query } from 'appwrite';
 
 const initializeAppwrite = () => {
     if (typeof window === 'undefined') {
-        // Skip initialization on server side
         console.log('Skipping Appwrite initialization on server side');
         return null;
     }
@@ -12,6 +11,9 @@ const initializeAppwrite = () => {
         console.log('Initializing Appwrite with env:', {
             endpoint: process.env.NEXT_PUBLIC_APPWRITE_ENDPOINT,
             projectId: process.env.NEXT_PUBLIC_APPWRITE_PROJECT_ID,
+            databaseId: process.env.NEXT_PUBLIC_APPWRITE_DATABASE_ID,
+            collectionId: process.env.NEXT_PUBLIC_APPWRITE_COLLECTION_ID,
+            bucketId: process.env.NEXT_PUBLIC_APPWRITE_BUCKET_ID,
         });
 
         if (!process.env.NEXT_PUBLIC_APPWRITE_ENDPOINT || !process.env.NEXT_PUBLIC_APPWRITE_PROJECT_ID) {
