@@ -1,7 +1,9 @@
 import { forwardRef } from 'react';
 import { Plus } from 'lucide-react';
 
-const ReviewForm = forwardRef(({ showForm, newReview, setNewReview, categories, handleSubmitReview, setShowForm, setError }, ref) => {
+const ReviewFormInner = (props, ref) => {
+    const { showForm, newReview, setNewReview, categories, handleSubmitReview, setShowForm, setError } = props;
+
     return (
         showForm && (
             <div ref={ref} className="bg-white rounded-2xl shadow-xl p-8 mb-8 border border-gray-100">
@@ -73,6 +75,8 @@ const ReviewForm = forwardRef(({ showForm, newReview, setNewReview, categories, 
             </div>
         )
     );
-});
+};
+
+const ReviewForm = forwardRef(ReviewFormInner);
 
 export default ReviewForm;
