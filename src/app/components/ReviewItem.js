@@ -1,7 +1,7 @@
 // src/app/components/ReviewItem.js
 import React, { useState } from 'react';
 import { Star, MoreVertical } from 'lucide-react';
-import { databases, storage } from '../appwrite';
+import { databases, storage } from '../appwriteClient';
 import Image from 'next/image'; // Import Image from next/image
 
 // Color mapping for categories
