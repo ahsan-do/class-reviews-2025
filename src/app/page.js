@@ -1,14 +1,28 @@
 // src/app/page.js (Home.js)
-"use client";
+"use client"; // Ensure this remains at the top
 import { useState, useEffect, useRef } from 'react';
 import { Heart, Smile, AlertCircle, Frown, Flame, Filter, Loader2 } from 'lucide-react';
-import { databases, storage } from './appwrite';
-import { ID, Query } from "appwrite";
 import Header from './components/Header';
 import ReviewForm from './components/ReviewForm';
 import Filters from './components/Filters';
 import ReviewList from './components/ReviewList';
 import Footer from './components/Footer';
+
+// Defer Appwrite import to client side
+let databases, storage;
+const initializeAppwrite = () => {
+  const { Appwrite } = require('appwrite');
+  const { ID, Query } = require('appwrite');
+
+  const client = new Appwrite();
+  client.setEndpoint(process.env.NEXT_PUBLIC_APPWRITE_ENDPOINT || 'https://cloud.appwrite.io/v1');
+  client.setProject(process.env.NEXT_PUBLIC_APPWRITE_PROJECT_ID);
+
+  databases = new Appwrite.Databases(client);
+  storage = new Appwrite.Storage(client);
+
+  return { databases, storage, ID, Query };
+};
 
 export default function Home() {
   const [reviews, setReviews] = useState([]);
@@ -39,32 +53,36 @@ export default function Home() {
   };
 
   useEffect(() => {
+    const { databases: db, storage: st, ID, Query } = initializeAppwrite();
+    databases = db;
+    storage = st;
+
+    const fetchReviews = async () => {
+      try {
+        const response = await databases.listDocuments(
+            process.env.NEXT_PUBLIC_APPWRITE_DATABASE_ID,
+            process.env.NEXT_PUBLIC_APPWRITE_COLLECTION_ID,
+            [Query.orderDesc('$createdAt')]
+        );
+        setReviews(response.documents.map(doc => ({
+          id: doc.$id,
+          content: doc.content,
+          category: doc.category,
+          nickname: doc.nickname || `Anonymous_${Math.floor(Math.random() * 100)}`,
+          imageUrl: doc.imageUrl,
+          reactions: JSON.parse(doc.reaction || '{}'),
+          timestamp: new Date(doc.$createdAt),
+          userReactions: JSON.parse(doc.userReactions || '{}'),
+        })));
+        setError(null);
+      } catch (err) {
+        console.error('Error fetching reviews:', err);
+        setError('Failed to load reviews. Please try again.');
+      }
+    };
+
     fetchReviews();
   }, []);
-
-  const fetchReviews = async () => {
-    try {
-      const response = await databases.listDocuments(
-          process.env.NEXT_PUBLIC_APPWRITE_DATABASE_ID,
-          process.env.NEXT_PUBLIC_APPWRITE_COLLECTION_ID,
-          [Query.orderDesc('$createdAt')]
-      );
-      setReviews(response.documents.map(doc => ({
-        id: doc.$id,
-        content: doc.content,
-        category: doc.category,
-        nickname: doc.nickname || `Anonymous_${Math.floor(Math.random() * 100)}`,
-        imageUrl: doc.imageUrl,
-        reactions: JSON.parse(doc.reaction || '{}'), // Ensure reactions is an object
-        timestamp: new Date(doc.$createdAt),
-        userReactions: JSON.parse(doc.userReactions || '{}'),
-      })));
-      setError(null);
-    } catch (err) {
-      console.error('Error fetching reviews:', err);
-      setError('Failed to load reviews. Please try again.');
-    }
-  };
 
   const handleSubmitReview = async (e) => {
     e.preventDefault();
@@ -118,7 +136,7 @@ export default function Home() {
     const tempReview = {
       id: ID.unique(),
       ...reviewData,
-      reactions: JSON.parse(reviewData.reaction), // Parse reactions to match fetchReviews structure
+      reactions: JSON.parse(reviewData.reaction),
       userReactions: JSON.parse(reviewData.userReactions)
     };
 
@@ -129,7 +147,6 @@ export default function Home() {
           ID.unique(),
           reviewData
       );
-      // Immediately add the new review to the state with the server-assigned $id
       setReviews((prevReviews) => [{ id: response.$id, ...tempReview }, ...prevReviews]);
       setNewReview({ content: '', category: 'General', nickname: '', image: null });
       setShowForm(false);
@@ -139,11 +156,36 @@ export default function Home() {
       setError('Failed to submit review. Please try again.');
     } finally {
       setIsLoading(false);
-      fetchReviews(); // Sync with server to ensure consistency
+      const { databases: db } = initializeAppwrite(); // Reinitialize for fetch
+      const fetchReviews = async () => {
+        try {
+          const response = await db.listDocuments(
+              process.env.NEXT_PUBLIC_APPWRITE_DATABASE_ID,
+              process.env.NEXT_PUBLIC_APPWRITE_COLLECTION_ID,
+              [Query.orderDesc('$createdAt')]
+          );
+          setReviews(response.documents.map(doc => ({
+            id: doc.$id,
+            content: doc.content,
+            category: doc.category,
+            nickname: doc.nickname || `Anonymous_${Math.floor(Math.random() * 100)}`,
+            imageUrl: doc.imageUrl,
+            reactions: JSON.parse(doc.reaction || '{}'),
+            timestamp: new Date(doc.$createdAt),
+            userReactions: JSON.parse(doc.userReactions || '{}'),
+          })));
+          setError(null);
+        } catch (err) {
+          console.error('Error fetching reviews:', err);
+          setError('Failed to load reviews. Please try again.');
+        }
+      };
+      fetchReviews();
     }
   };
 
   const handleReaction = async (reviewId, reactionType) => {
+    const { databases: db } = initializeAppwrite(); // Reinitialize for reaction
     const userId = 'anonymousUser';
     const review = reviews.find(r => r.id === reviewId);
     const userCount = Object.values(review.userReactions).length;
@@ -177,12 +219,35 @@ export default function Home() {
     }
 
     try {
-      await databases.updateDocument(
+      await db.updateDocument(
           process.env.NEXT_PUBLIC_APPWRITE_DATABASE_ID,
           process.env.NEXT_PUBLIC_APPWRITE_COLLECTION_ID,
           reviewId,
           updates
       );
+      const fetchReviews = async () => {
+        try {
+          const response = await db.listDocuments(
+              process.env.NEXT_PUBLIC_APPWRITE_DATABASE_ID,
+              process.env.NEXT_PUBLIC_APPWRITE_COLLECTION_ID,
+              [Query.orderDesc('$createdAt')]
+          );
+          setReviews(response.documents.map(doc => ({
+            id: doc.$id,
+            content: doc.content,
+            category: doc.category,
+            nickname: doc.nickname || `Anonymous_${Math.floor(Math.random() * 100)}`,
+            imageUrl: doc.imageUrl,
+            reactions: JSON.parse(doc.reaction || '{}'),
+            timestamp: new Date(doc.$createdAt),
+            userReactions: JSON.parse(doc.userReactions || '{}'),
+          })));
+          setError(null);
+        } catch (err) {
+          console.error('Error fetching reviews:', err);
+          setError('Failed to load reviews. Please try again.');
+        }
+      };
       fetchReviews();
     } catch (err) {
       console.error('Error updating reaction:', err);
@@ -194,8 +259,8 @@ export default function Home() {
     let filtered = filter === 'All' ? reviews : reviews.filter(review => review.category === filter);
     if (sortBy === 'Popular') {
       filtered = filtered.sort((a, b) => {
-        const aTotal = Object.values(a.reactions).reduce((sum, val) => sum + val, 0);
-        const bTotal = Object.values(b.reactions).reduce((sum, val) => sum + val, 0);
+        const aTotal = Object.values(a.reactions || {}).reduce((sum, val) => sum + val, 0);
+        const bTotal = Object.values(b.reactions || {}).reduce((sum, val) => sum + val, 0);
         return bTotal - aTotal;
       });
     } else {
@@ -205,7 +270,7 @@ export default function Home() {
   };
 
   const getTotalReactions = (reactions) => {
-    return Object.values(reactions || {}).reduce((sum, val) => sum + val, 0); // Add fallback for undefined/null
+    return Object.values(reactions || {}).reduce((sum, val) => sum + val, 0);
   };
 
   const getTopReaction = (reactions) => {
@@ -247,7 +312,32 @@ export default function Home() {
               handleReaction={handleReaction}
               getTotalReactions={getTotalReactions}
               getTopReaction={getTopReaction}
-              fetchReviews={fetchReviews}
+              fetchReviews={() => {
+                const { databases: db } = initializeAppwrite();
+                return (async () => {
+                  try {
+                    const response = await db.listDocuments(
+                        process.env.NEXT_PUBLIC_APPWRITE_DATABASE_ID,
+                        process.env.NEXT_PUBLIC_APPWRITE_COLLECTION_ID,
+                        [Query.orderDesc('$createdAt')]
+                    );
+                    setReviews(response.documents.map(doc => ({
+                      id: doc.$id,
+                      content: doc.content,
+                      category: doc.category,
+                      nickname: doc.nickname || `Anonymous_${Math.floor(Math.random() * 100)}`,
+                      imageUrl: doc.imageUrl,
+                      reactions: JSON.parse(doc.reaction || '{}'),
+                      timestamp: new Date(doc.$createdAt),
+                      userReactions: JSON.parse(doc.userReactions || '{}'),
+                    })));
+                    setError(null);
+                  } catch (err) {
+                    console.error('Error fetching reviews:', err);
+                    setError('Failed to load reviews. Please try again.');
+                  }
+                })();
+              }}
           />
           {getFilteredAndSortedReviews().length === 0 && (
               <div className="text-center py-16">
