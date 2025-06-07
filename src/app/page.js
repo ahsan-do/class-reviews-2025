@@ -1,8 +1,9 @@
+// src/app/page.js (Home.js)
 "use client";
 import { useState, useEffect, useRef } from 'react';
-import { Heart, Smile, AlertCircle, Frown, Flame, Filter } from 'lucide-react';
-import { database } from './firebase';
-import { ref, push, onValue, update, get } from 'firebase/database'; // Added 'get' here
+import { Heart, Smile, AlertCircle, Frown, Flame, Filter, Loader2 } from 'lucide-react';
+import { databases, storage } from './appwrite';
+import { ID, Query } from "appwrite";
 import Header from './components/Header';
 import ReviewForm from './components/ReviewForm';
 import Filters from './components/Filters';
@@ -14,16 +15,15 @@ export default function Home() {
   const [newReview, setNewReview] = useState({
     content: '',
     category: 'General',
-    nickname: ''
+    nickname: '',
+    image: null
   });
   const [filter, setFilter] = useState('All');
   const [sortBy, setSortBy] = useState('Recent');
   const [showForm, setShowForm] = useState(false);
   const [error, setError] = useState(null);
+  const [isLoading, setIsLoading] = useState(false);
   const formRef = useRef(null);
-
-  // Track user reaction counts (simplified, in-memory)
-  const [userReactionCounts, setUserReactionCounts] = useState({});
 
   const categories = [
     'General', 'Heartwarming', 'Funny Moments', 'Lessons Learned',
@@ -39,28 +39,34 @@ export default function Home() {
   };
 
   useEffect(() => {
-    const reviewsRef = ref(database, 'reviews');
-    onValue(reviewsRef, (snapshot) => {
-      const data = snapshot.val();
-      if (data) {
-        const reviewsArray = Object.entries(data).map(([id, review]) => ({
-          id,
-          ...review,
-          timestamp: new Date(review.timestamp)
-        }));
-        setReviews(reviewsArray);
-        setError(null);
-      } else {
-        setReviews([]);
-        setError(null);
-      }
-    }, (error) => {
-      console.error('Error fetching reviews:', error);
-      setError('Failed to load reviews. Please try again later.');
-    });
+    fetchReviews();
   }, []);
 
-  const handleSubmitReview = (e) => {
+  const fetchReviews = async () => {
+    try {
+      const response = await databases.listDocuments(
+          process.env.NEXT_PUBLIC_APPWRITE_DATABASE_ID,
+          process.env.NEXT_PUBLIC_APPWRITE_COLLECTION_ID,
+          [Query.orderDesc('$createdAt')]
+      );
+      setReviews(response.documents.map(doc => ({
+        id: doc.$id,
+        content: doc.content,
+        category: doc.category,
+        nickname: doc.nickname || `Anonymous_${Math.floor(Math.random() * 100)}`,
+        imageUrl: doc.imageUrl,
+        reactions: JSON.parse(doc.reaction || '{}'), // Ensure reactions is an object
+        timestamp: new Date(doc.$createdAt),
+        userReactions: JSON.parse(doc.userReactions || '{}'),
+      })));
+      setError(null);
+    } catch (err) {
+      console.error('Error fetching reviews:', err);
+      setError('Failed to load reviews. Please try again.');
+    }
+  };
+
+  const handleSubmitReview = async (e) => {
     e.preventDefault();
     if (!newReview.content.trim()) {
       setError('Review content cannot be empty.');
@@ -74,65 +80,114 @@ export default function Home() {
       setError('Nickname cannot exceed 50 characters.');
       return;
     }
-    const review = {
+    if (!categories.includes(newReview.category)) {
+      setError('Invalid category selected.');
+      return;
+    }
+
+    setIsLoading(true);
+    let imageUrl = null;
+    if (newReview.image) {
+      const file = new File([newReview.image], newReview.image.name, { type: newReview.image.type });
+      try {
+        const uploadResponse = await storage.createFile(
+            process.env.NEXT_PUBLIC_APPWRITE_BUCKET_ID,
+            ID.unique(),
+            file
+        );
+        imageUrl = `https://fra.cloud.appwrite.io/v1/storage/buckets/${process.env.NEXT_PUBLIC_APPWRITE_BUCKET_ID}/files/${uploadResponse.$id}/view?project=${process.env.NEXT_PUBLIC_APPWRITE_PROJECT_ID}`;
+        console.log('Generated imageUrl:', imageUrl);
+      } catch (err) {
+        console.error('Error uploading image:', err);
+        setError('Failed to upload image. Please try again.');
+        setIsLoading(false);
+        return;
+      }
+    }
+
+    const reviewData = {
       content: newReview.content,
       category: newReview.category,
-      nickname: newReview.nickname.trim() || `Anonymous ${Math.floor(Math.random() * 100)}`,
-      reactions: { heart: 0, laugh: 0, surprise: 0, sad: 0, fire: 0 },
-      timestamp: Date.now()
+      nickname: newReview.nickname.trim() || `Anonymous_${Math.floor(Math.random() * 100)}`,
+      imageUrl: imageUrl,
+      reaction: JSON.stringify({ heart: 0, laugh: 0, surprise: 0, sad: 0, fire: 0 }),
+      timestamp: new Date().toISOString(),
+      userReactions: JSON.stringify({})
     };
-    const reviewsRef = ref(database, 'reviews');
-    push(reviewsRef, review)
-        .then(() => {
-          setNewReview({ content: '', category: 'General', nickname: '' });
-          setShowForm(false);
-          setError(null);
-        })
-        .catch((error) => {
-          console.error('Error adding review:', error);
-          setError('Failed to submit review. Please try again.');
-        });
+
+    const tempReview = {
+      id: ID.unique(),
+      ...reviewData,
+      reactions: JSON.parse(reviewData.reaction), // Parse reactions to match fetchReviews structure
+      userReactions: JSON.parse(reviewData.userReactions)
+    };
+
+    try {
+      const response = await databases.createDocument(
+          process.env.NEXT_PUBLIC_APPWRITE_DATABASE_ID,
+          process.env.NEXT_PUBLIC_APPWRITE_COLLECTION_ID,
+          ID.unique(),
+          reviewData
+      );
+      // Immediately add the new review to the state with the server-assigned $id
+      setReviews((prevReviews) => [{ id: response.$id, ...tempReview }, ...prevReviews]);
+      setNewReview({ content: '', category: 'General', nickname: '', image: null });
+      setShowForm(false);
+      setError(null);
+    } catch (err) {
+      console.error('Error adding review:', err);
+      setError('Failed to submit review. Please try again.');
+    } finally {
+      setIsLoading(false);
+      fetchReviews(); // Sync with server to ensure consistency
+    }
   };
 
-  const handleReaction = (reviewId, reactionType) => {
-    const userId = 'anonymousUser'; // Static user ID for now
-    const userCount = userReactionCounts[userId] || 0;
+  const handleReaction = async (reviewId, reactionType) => {
+    const userId = 'anonymousUser';
+    const review = reviews.find(r => r.id === reviewId);
+    const userCount = Object.values(review.userReactions).length;
 
     if (userCount >= 5) {
       setError('You have reached the maximum of 5 reactions per user.');
       return;
     }
 
-    console.log('Updating reaction for:', reviewId, reactionType);
-    const reviewRef = ref(database, `reviews/${reviewId}`);
-    get(reviewRef).then((snapshot) => {
-      if (!snapshot.exists()) return;
-      const review = snapshot.val();
-      const userReactions = review.userReactions || {};
-      const currentUserReaction = userReactions[userId];
+    const currentReaction = review.userReactions[userId];
+    const updates = {};
 
-      const updates = {};
-      if (currentUserReaction === reactionType) {
-        updates[`reactions/${reactionType}`] = Math.max(0, (review.reactions[reactionType] || 0) - 1);
-        updates[`userReactions/${userId}`] = null;
-        setUserReactionCounts(prev => ({ ...prev, [userId]: userCount - 1 }));
-      } else {
-        if (currentUserReaction) {
-          updates[`reactions/${currentUserReaction}`] = Math.max(0, (review.reactions[currentUserReaction] || 0) - 1);
-        }
-        updates[`reactions/${reactionType}`] = (review.reactions[reactionType] || 0) + 1;
-        updates[`userReactions/${userId}`] = reactionType;
-        setUserReactionCounts(prev => ({ ...prev, [userId]: userCount + 1 }));
+    if (currentReaction === reactionType) {
+      const reactions = { ...review.reactions };
+      reactions[reactionType] = Math.max(0, reactions[reactionType] - 1);
+      updates[`reaction`] = JSON.stringify(reactions);
+      const userReactions = { ...review.userReactions };
+      delete userReactions[userId];
+      updates[`userReactions`] = JSON.stringify(userReactions);
+    } else {
+      const reactions = { ...review.reactions };
+      if (currentReaction) {
+        reactions[currentReaction] = Math.max(0, reactions[currentReaction] - 1);
       }
-
-      update(reviewRef, updates).catch((error) => {
-        console.error('Error updating reaction:', error);
-        setError('Failed to add reaction. Please try again.');
+      reactions[reactionType] = (reactions[reactionType] || 0) + 1;
+      updates[`reaction`] = JSON.stringify(reactions);
+      updates[`userReactions`] = JSON.stringify({
+        ...review.userReactions,
+        [userId]: reactionType
       });
-    }).catch((error) => {
-      console.error('Error fetching review:', error);
-      setError('Failed to load review data.');
-    });
+    }
+
+    try {
+      await databases.updateDocument(
+          process.env.NEXT_PUBLIC_APPWRITE_DATABASE_ID,
+          process.env.NEXT_PUBLIC_APPWRITE_COLLECTION_ID,
+          reviewId,
+          updates
+      );
+      fetchReviews();
+    } catch (err) {
+      console.error('Error updating reaction:', err);
+      setError('Failed to add reaction. Please try again.');
+    }
   };
 
   const getFilteredAndSortedReviews = () => {
@@ -150,18 +205,17 @@ export default function Home() {
   };
 
   const getTotalReactions = (reactions) => {
-    return Object.values(reactions).reduce((sum, val) => sum + val, 0);
+    return Object.values(reactions || {}).reduce((sum, val) => sum + val, 0); // Add fallback for undefined/null
   };
 
   const getTopReaction = (reactions) => {
-    const maxReaction = Math.max(...Object.values(reactions));
+    const maxReaction = Math.max(...Object.values(reactions || {}));
     if (maxReaction === 0) return null;
-    return Object.entries(reactions).find(([_, count]) => count === maxReaction)?.[0];
+    return Object.entries(reactions || {}).find(([_, count]) => count === maxReaction)?.[0];
   };
 
-  // Handle scroll when showForm changes
   useEffect(() => {
-    if (showForm && formRef.current) {
+    if (showForm && formRef.current && typeof formRef.current.scrollIntoView === 'function') {
       formRef.current.scrollIntoView({ behavior: 'smooth' });
     }
   }, [showForm]);
@@ -184,6 +238,7 @@ export default function Home() {
               handleSubmitReview={handleSubmitReview}
               setShowForm={setShowForm}
               setError={setError}
+              isLoading={isLoading}
           />
           <Filters filter={filter} setFilter={setFilter} sortBy={sortBy} setSortBy={setSortBy} />
           <ReviewList
@@ -192,6 +247,7 @@ export default function Home() {
               handleReaction={handleReaction}
               getTotalReactions={getTotalReactions}
               getTopReaction={getTopReaction}
+              fetchReviews={fetchReviews}
           />
           {getFilteredAndSortedReviews().length === 0 && (
               <div className="text-center py-16">

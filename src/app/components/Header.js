@@ -17,7 +17,7 @@ export default function Header({ showForm, setShowForm }) {
                     </div>
                     <button
                         onClick={handleShareClick}
-                        className="bg-gradient-to-r from-indigo-500 to-purple-500 text-white px-6 py-3 rounded-full hover:shadow-lg transition-all duration-200 flex items-center gap-2 font-semibold"
+                        className="bg-gradient-to-r from-indigo-500 to-purple-500 text-white px-6 py-3 rounded-full hover:shadow-lg transition-all duration-200 flex items-center gap-2 font-semibold cursor-pointer"
                     >
                         <Plus size={20} />
                         Share Your Story
