@@ -30,15 +30,15 @@ export default function ReviewItem({ review, reactionIcons, handleReaction, getT
                 )}
             </div>
             <p className="text-gray-800 leading-relaxed mb-6 text-lg">{review.content}</p>
-            <div className="flex items-center gap-4 pt-4 border-t border-gray-100">
+            <div className="flex flex-wrap items-center gap-2 pt-4 border-t border-gray-100 sm:gap-4">
                 {Object.entries(reactionIcons).map(([key, { icon: Icon, label, color }]) => (
                     <button
                         key={key}
                         onClick={() => handleReaction(review.id, key)}
-                        className={`flex items-center gap-2 px-3 py-2 rounded-full hover:bg-gray-50 transition-all duration-200 group ${review.reactions[key] > 0 ? 'bg-gray-50' : ''}`}
+                        className="flex items-center gap-1 px-2 py-1 rounded-full hover:bg-gray-50 transition-all duration-200 group sm:px-3 sm:py-2 text-sm sm:text-base whitespace-nowrap overflow-hidden text-ellipsis max-w-full"
                         title={label}
                     >
-                        <Icon size={18} className={`${color} group-hover:scale-110 transition-transform`} />
+                        <Icon size={16} className={`${color} group-hover:scale-110 transition-transform`} />
                         {review.reactions[key] > 0 && (
                             <span className="text-sm font-semibold text-gray-700">
                 {review.reactions[key]}
