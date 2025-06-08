@@ -10,6 +10,12 @@ const ReviewList = ({
                         fetchReviews,
                         databases,
                         storage,
+                        userId,
+                        handleEditReview,
+                        handleDeleteReview,
+                        handleSaveReview,
+                        handleUserSave,
+                        handleReportReview,
                     }) => {
     return (
         <div className="space-y-6">
@@ -24,6 +30,12 @@ const ReviewList = ({
                     fetchReviews={fetchReviews}
                     databases={databases}
                     storage={storage}
+                    userId={userId}
+                    handleEditReview={handleEditReview}
+                    handleDeleteReview={handleDeleteReview}
+                    handleSaveReview={handleSaveReview}
+                    handleUserSave={handleUserSave}
+                    handleReportReview={handleReportReview}
                 />
             ))}
         </div>

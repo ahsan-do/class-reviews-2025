@@ -7,6 +7,7 @@ import ReviewForm from './components/ReviewForm';
 import Filters from './components/Filters';
 import ReviewList from './components/ReviewList';
 import Footer from './components/Footer';
+import { useRouter } from 'next/navigation';
 
 // Optional: Force dynamic rendering to avoid prerendering issues
 export const dynamic = 'force-dynamic';
@@ -26,8 +27,10 @@ export default function Home() {
   const [isLoading, setIsLoading] = useState(false);
   const [appwrite, setAppwrite] = useState(null);
   const [isInitializing, setIsInitializing] = useState(true);
-  const isClientReady = useRef(false); // Track client-side readiness
-  const formRef = useRef(null); // Define formRef here
+  const [userId, setUserId] = useState(null); // Authenticated user ID
+  const isClientReady = useRef(false);
+  const formRef = useRef(null);
+  const router = useRouter();
 
   const categories = [
     'General', 'Heartwarming', 'Funny Moments', 'Lessons Learned',
@@ -48,79 +51,69 @@ export default function Home() {
     const initializeAndFetch = async () => {
       if (!isClientReady.current) {
         console.log('Waiting for client-side context...');
-        return; // Wait until client is ready
+        return;
+      }
+
+      const { default: initializeAppwrite } = await import('./lib/appwriteClient');
+      const appwrite = initializeAppwrite();
+
+      if (!appwrite) {
+        setError('Appwrite client not initialized.');
+        setIsInitializing(false);
+        return;
+      }
+
+      const user = await appwrite.getCurrentUser();
+      if (!user) {
+        router.push('/auth');
+        return;
+      }
+
+      if (isMounted) {
+        setAppwrite(appwrite);
+        setUserId(user.$id); // Set the authenticated user ID
+        setIsInitializing(false);
       }
 
       try {
-        // Dynamic import the initialization function
-        const { default: initializeAppwrite } = await import('./appwriteClient');
-        console.log('Loaded initializeAppwrite function:', initializeAppwrite);
-
-        // Call the initialization function
-        const appwriteInstance = initializeAppwrite();
-        console.log('Appwrite instance after initialization:', appwriteInstance);
-
-        if (!appwriteInstance || !appwriteInstance.databases || typeof appwriteInstance.databases.listDocuments !== 'function') {
-          console.error('Appwrite initialization failed, returned:', appwriteInstance);
-          if (isMounted) {
-            setError('Failed to initialize Appwrite client. Check console for details.');
-            setIsInitializing(false);
-          }
-          return;
-        }
+        const { databases, Query } = appwrite;
+        const response = await databases.listDocuments(
+            process.env.NEXT_PUBLIC_APPWRITE_DATABASE_ID,
+            process.env.NEXT_PUBLIC_APPWRITE_COLLECTION_ID,
+            [Query.orderDesc('$createdAt')],
+        );
 
         if (isMounted) {
-          setAppwrite(appwriteInstance);
-          setIsInitializing(false);
-        }
-
-        // Fetch reviews
-        const { databases, Query } = appwriteInstance;
-        try {
-          const response = await databases.listDocuments(
-              process.env.NEXT_PUBLIC_APPWRITE_DATABASE_ID,
-              process.env.NEXT_PUBLIC_APPWRITE_COLLECTION_ID,
-              [Query.orderDesc('$createdAt')],
+          setReviews(
+              response.documents.map((doc) => ({
+                id: doc.$id,
+                content: doc.content,
+                category: doc.category,
+                nickname: doc.nickname || `Anonymous_${Math.floor(Math.random() * 100)}`,
+                imageUrl: doc.imageUrl,
+                reactions: JSON.parse(doc.reaction || '{}'),
+                timestamp: new Date(doc.$createdAt),
+                userReactions: JSON.parse(doc.userReactions || '{}'),
+                authorId: doc.userId, // Map to authorId from userId
+              })),
           );
-
-          if (isMounted) {
-            setReviews(
-                response.documents.map((doc) => ({
-                  id: doc.$id,
-                  content: doc.content,
-                  category: doc.category,
-                  nickname: doc.nickname || `Anonymous_${Math.floor(Math.random() * 100)}`,
-                  imageUrl: doc.imageUrl,
-                  reactions: JSON.parse(doc.reaction || '{}'),
-                  timestamp: new Date(doc.$createdAt),
-                  userReactions: JSON.parse(doc.userReactions || '{}'),
-                })),
-            );
-            setError(null);
-          }
-        } catch (err) {
-          if (isMounted) {
-            console.error('Error fetching reviews:', err);
-            setError('Failed to load reviews. Please try again.');
-          }
+          setError(null);
         }
-      } catch (importError) {
-        console.error('Error importing Appwrite client:', importError);
+      } catch (err) {
         if (isMounted) {
-          setError('Failed to load Appwrite client module.');
-          setIsInitializing(false);
+          console.error('Error fetching reviews or initializing:', err);
+          setError('Failed to load reviews or initialize. Please try again.');
         }
       }
     };
 
-    // Set client-ready flag and trigger initialization
     isClientReady.current = true;
     initializeAndFetch();
 
     return () => {
       isMounted = false;
     };
-  }, []);
+  }, [router]);
 
   const handleSubmitReview = async (e) => {
     e.preventDefault();
@@ -159,7 +152,6 @@ export default function Home() {
             file,
         );
         imageUrl = `https://fra.cloud.appwrite.io/v1/storage/buckets/${process.env.NEXT_PUBLIC_APPWRITE_BUCKET_ID}/files/${uploadResponse.$id}/view?project=${process.env.NEXT_PUBLIC_APPWRITE_PROJECT_ID}`;
-        console.log('Generated imageUrl:', imageUrl);
       } catch (err) {
         console.error('Error uploading image:', err);
         setError('Failed to upload image. Please try again.');
@@ -176,6 +168,7 @@ export default function Home() {
       reaction: JSON.stringify({ heart: 0, laugh: 0, surprise: 0, sad: 0, fire: 0 }),
       timestamp: new Date().toISOString(),
       userReactions: JSON.stringify({}),
+      userId: userId, // Store the author’s ID
     };
 
     const tempReview = {
@@ -183,6 +176,7 @@ export default function Home() {
       ...reviewData,
       reactions: JSON.parse(reviewData.reaction),
       userReactions: JSON.parse(reviewData.userReactions),
+      authorId: userId,
     };
 
     try {
@@ -228,6 +222,7 @@ export default function Home() {
             reactions: JSON.parse(doc.reaction || '{}'),
             timestamp: new Date(doc.$createdAt),
             userReactions: JSON.parse(doc.userReactions || '{}'),
+            authorId: doc.userId,
           })),
       );
       setError(null);
@@ -238,31 +233,31 @@ export default function Home() {
   };
 
   const handleReaction = async (reviewId, reactionType) => {
-    if (!appwrite) {
-      setError('Appwrite client not initialized.');
+    if (!appwrite || !userId) {
+      setError('Appwrite client or user not initialized.');
       return;
     }
 
     const { databases, Query } = appwrite;
-    const userId = 'anonymousUser';
     const review = reviews.find((r) => r.id === reviewId);
-    const userCount = Object.values(review.userReactions).length;
+    const userReactions = review.userReactions;
+    const userReactionCount = Object.keys(userReactions).filter((uid) => uid === userId).length;
 
-    if (userCount >= 5) {
+    if (userReactionCount >= 5) {
       setError('You have reached the maximum of 5 reactions per user.');
       return;
     }
 
-    const currentReaction = review.userReactions[userId];
+    const currentReaction = userReactions[userId];
     const updates = {};
 
     if (currentReaction === reactionType) {
       const reactions = { ...review.reactions };
       reactions[reactionType] = Math.max(0, reactions[reactionType] - 1);
       updates[`reaction`] = JSON.stringify(reactions);
-      const userReactions = { ...review.userReactions };
-      delete userReactions[userId];
-      updates[`userReactions`] = JSON.stringify(userReactions);
+      const newUserReactions = { ...userReactions };
+      delete newUserReactions[userId];
+      updates[`userReactions`] = JSON.stringify(newUserReactions);
     } else {
       const reactions = { ...review.reactions };
       if (currentReaction) {
@@ -271,7 +266,7 @@ export default function Home() {
       reactions[reactionType] = (reactions[reactionType] || 0) + 1;
       updates[`reaction`] = JSON.stringify(reactions);
       updates[`userReactions`] = JSON.stringify({
-        ...review.userReactions,
+        ...userReactions,
         [userId]: reactionType,
       });
     }
@@ -287,6 +282,112 @@ export default function Home() {
     } catch (err) {
       console.error('Error updating reaction:', err);
       setError('Failed to add reaction. Please try again.');
+    }
+  };
+
+  const handleEditReview = async (reviewId) => {
+    const review = reviews.find((r) => r.id === reviewId);
+    if (review.authorId !== userId) {
+      setError('You can only edit your own reviews.');
+      return;
+    }
+    setNewReview({
+      content: review.content,
+      category: review.category,
+      nickname: review.nickname,
+      image: review.imageUrl ? { name: 'existing', type: 'image/jpeg' } : null,
+    });
+    setShowForm(true);
+    formRef.current.scrollIntoView({ behavior: 'smooth' });
+  };
+
+  const handleDeleteReview = async (reviewId) => {
+    if (!appwrite || !userId) {
+      setError('Appwrite client or user not initialized.');
+      return;
+    }
+    const review = reviews.find((r) => r.id === reviewId);
+    if (review.authorId !== userId) {
+      setError('You can only delete your own reviews.');
+      return;
+    }
+    try {
+      await appwrite.databases.deleteDocument(
+          process.env.NEXT_PUBLIC_APPWRITE_DATABASE_ID,
+          process.env.NEXT_PUBLIC_APPWRITE_COLLECTION_ID,
+          reviewId,
+      );
+      setReviews(reviews.filter((r) => r.id !== reviewId));
+      setError(null);
+    } catch (err) {
+      console.error('Error deleting review:', err);
+      setError('Failed to delete review. Please try again.');
+    }
+  };
+
+  const handleSaveReview = async (reviewId) => {
+    const review = reviews.find((r) => r.id === reviewId);
+    if (review.authorId !== userId) {
+      setError('You can only save your own reviews.');
+      return;
+    }
+    try {
+      await appwrite.databases.createDocument(
+          process.env.NEXT_PUBLIC_APPWRITE_DATABASE_ID,
+          process.env.NEXT_PUBLIC_APPWRITE_DRAFTS_COLLECTION_ID,
+          appwrite.ID.unique(),
+          {
+            reviewId: review.id,
+            content: review.content,
+            category: review.category,
+            nickname: review.nickname,
+            imageUrl: review.imageUrl,
+            userId: userId,
+            timestamp: new Date().toISOString(),
+          },
+      );
+      setError('Review saved as draft.');
+    } catch (err) {
+      console.error('Error saving review:', err);
+      setError('Failed to save review. Please try again.');
+    }
+  };
+
+  const handleUserSave = async (reviewId) => {
+    if (!userId) {
+      setError('Please log in to save reviews.');
+      return;
+    }
+    try {
+      await appwrite.databases.createDocument(
+          process.env.NEXT_PUBLIC_APPWRITE_DATABASE_ID,
+          process.env.NEXT_PUBLIC_APPWRITE_SAVED_COLLECTION_ID,
+          appwrite.ID.unique(),
+          { reviewId, userId, timestamp: new Date().toISOString() },
+      );
+      setError('Review saved successfully.');
+    } catch (err) {
+      console.error('Error saving review:', err);
+      setError('Failed to save review. Please try again.');
+    }
+  };
+
+  const handleReportReview = async (reviewId) => {
+    if (!userId) {
+      setError('Please log in to report reviews.');
+      return;
+    }
+    try {
+      await appwrite.databases.createDocument(
+          process.env.NEXT_PUBLIC_APPWRITE_DATABASE_ID,
+          process.env.NEXT_PUBLIC_APPWRITE_REPORTS_COLLECTION_ID,
+          appwrite.ID.unique(),
+          { reviewId, userId, timestamp: new Date().toISOString() },
+      );
+      setError('Review reported successfully.');
+    } catch (err) {
+      console.error('Error reporting review:', err);
+      setError('Failed to report review. Please try again.');
     }
   };
 
@@ -320,7 +421,6 @@ export default function Home() {
     }
   }, [showForm]);
 
-  // Show loading state while initializing
   if (isInitializing) {
     return (
         <div className="min-h-screen bg-gradient-to-br from-indigo-50 via-white to-purple-50 flex items-center justify-center">
@@ -359,6 +459,12 @@ export default function Home() {
               fetchReviews={fetchReviews}
               databases={appwrite?.databases || null}
               storage={appwrite?.storage || null}
+              userId={userId}
+              handleEditReview={handleEditReview}
+              handleDeleteReview={handleDeleteReview}
+              handleSaveReview={handleSaveReview}
+              handleUserSave={handleUserSave}
+              handleReportReview={handleReportReview}
           />
           {getFilteredAndSortedReviews().length === 0 && !isInitializing && (
               <div className="text-center py-16">
