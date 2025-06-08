@@ -2,7 +2,9 @@
 import { useState, useEffect } from 'react';
 import { MoreVertical, Trash2, Edit } from 'lucide-react';
 import { useAppwrite } from '../lib/appwriteContext';
+export const dynamic = 'force-dynamic'
 
+// Rest of your component code
 export default function SavedReviewsPage() {
     const { appwrite } = useAppwrite();
     const [reviews, setReviews] = useState([]);
