@@ -1,6 +1,7 @@
 "use client";
 import { useState, useEffect } from 'react';
-import {MoreVertical, Trash2, Edit, Loader2} from 'lucide-react';
+import { MoreVertical, Trash2, Edit } from 'lucide-react';
+// Adjust the import path if necessary
 import { useAppwrite } from '../lib/appwriteContext';
 
 export default function SavedReviewsPage() {
@@ -44,15 +45,7 @@ export default function SavedReviewsPage() {
         }
     };
 
-    if (isLoading){
-        return (
-            <div className="min-h-screen bg-gradient-to-br from-indigo-50 via-white to-purple-50 flex items-center justify-center">
-                <div className="text-center">
-                    <Loader2 className="animate-spin h-8 w-8 mx-auto mb-4 text-indigo-600"/>
-                </div>
-            </div>
-        )
-    }
+    if (isLoading) return <div className="text-center py-10">Loading...</div>;
     if (error) return <div className="text-center py-10 text-red-500">{error}</div>;
     if (reviews.length === 0) return <div className="text-center py-10">No saved reviews yet.</div>;
 
@@ -84,7 +77,7 @@ export default function SavedReviewsPage() {
                             </div>
                         )}
                         <p className="text-gray-800">{review.content}</p>
-                        <p className="text-sm text-gray-500 mt-2">Saved at: {new Date(review.$id).toLocaleString()}</p> {/* Potential issue here */}
+                        <p className="text-sm text-gray-500 mt-2">Saved at: {new Date(review.$id).toLocaleDateString()} {new Date(review.$id).toLocaleTimeString()}</p>
                     </div>
                 ))}
             </div>
