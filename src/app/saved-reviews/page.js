@@ -1,3 +1,4 @@
+"use client";
 import { useState, useEffect } from 'react';
 import {MoreVertical, Trash2, Edit, Loader2} from 'lucide-react';
 import { useAppwrite } from '../../context/AppwriteContext';
