@@ -52,11 +52,11 @@ export default function Page() {
             <div className="max-w-6xl w-full flex flex-col md:flex-row gap-8">
                 {/* Left Side - Information */}
                 <div className="w-full md:w-1/2 p-6 bg-white rounded-xl shadow-md">
-                    <h1 className="text-3xl font-bold text-purple-700 mb-4">Welcome to BSSC 2021-2025 Reviews</h1>
+                    <h1 className="text-3xl font-bold text-purple-700 mb-4">Welcome to BSCS 2021-2025 Reviews</h1>
                     <p className="text-gray-600 mb-4">
                         Share your journey anonymously, connect with your batchmates, and build a community of stories and memories. Whether it’s a heartwarming moment, a funny incident, or a lesson learned, your voice matters here!
                     </p>
-                    <p className="text-gray-500">Join thousands of students in celebrating our shared experience.</p>
+                    <p className="text-gray-500">Join your batchmates in celebrating our shared experience.</p>
                 </div>
 
                 {/* Right Side - Form */}
