@@ -1,10 +1,56 @@
 "use client";
+import { createContext, useContext, useState, useEffect } from 'react';
+import { Client, Databases, Query } from 'appwrite';
+
+const AppwriteContext = createContext();
+
+export const AppwriteProvider = ({ children }) => {
+    const [appwrite, setAppwrite] = useState(null);
+
+    useEffect(() => {
+        const client = new Client()
+            .setEndpoint(process.env.NEXT_PUBLIC_APPWRITE_ENDPOINT)
+            .setProject(process.env.NEXT_PUBLIC_APPWRITE_PROJECT_ID);
+
+        const database = new Databases(client);
+
+        setAppwrite({
+            client,
+            database,
+            query: Query
+        });
+    }, []);
+
+    return (
+        <AppwriteContext.Provider value={{ appwrite }}>
+            {children}
+        </AppwriteContext.Provider>
+    );
+};
+
+export const useAppwrite = () => {
+    const context = useContext(AppwriteContext);
+
+    // Handle SSR case - return null during server-side rendering
+    if (typeof window === 'undefined') {
+        return { appwrite: null };
+    }
+
+    if (!context) {
+        throw new Error('useAppwrite must be used within an AppwriteProvider');
+    }
+
+    return context;
+};
+
+// Fixed saved-reviews page
+"use client";
 import { useState, useEffect } from 'react';
 import { MoreVertical, Trash2, Edit } from 'lucide-react';
 import { useAppwrite } from '../lib/appwriteContext';
-export const dynamic = 'force-dynamic'
 
-// Rest of your component code
+export const dynamic = 'force-dynamic';
+
 export default function SavedReviewsPage() {
     const { appwrite } = useAppwrite();
     const [reviews, setReviews] = useState([]);
@@ -14,10 +60,10 @@ export default function SavedReviewsPage() {
 
     useEffect(() => {
         if (!appwrite) {
-            setError('Appwrite client not initialized.');
             setIsLoading(false);
             return;
         }
+
         const fetchReviews = async () => {
             try {
                 const response = await appwrite.database.listDocuments(
@@ -33,11 +79,13 @@ export default function SavedReviewsPage() {
                 setIsLoading(false);
             }
         };
+
         fetchReviews();
     }, [appwrite]);
 
     const handleDelete = async (reviewId) => {
         if (!appwrite) return;
+
         try {
             await appwrite.database.deleteDocument(
                 process.env.NEXT_PUBLIC_APPWRITE_DATABASE_ID,
@@ -54,6 +102,7 @@ export default function SavedReviewsPage() {
 
     if (isLoading) return <div className="text-center py-10">Loading...</div>;
     if (error) return <div className="text-center py-10 text-red-500">{error}</div>;
+    if (!appwrite) return <div className="text-center py-10">Initializing...</div>;
     if (reviews.length === 0) return <div className="text-center py-10">No saved reviews yet.</div>;
 
     return (
@@ -84,7 +133,9 @@ export default function SavedReviewsPage() {
                             </div>
                         )}
                         <p className="text-gray-800">{review.content}</p>
-                        <p className="text-sm text-gray-500 mt-2">Saved at: {new Date(review.$id).toLocaleDateString()} {new Date(review.$id).toLocaleTimeString()}</p>
+                        <p className="text-sm text-gray-500 mt-2">
+                            Saved at: {new Date(review.$createdAt || review.$id).toLocaleDateString()} {new Date(review.$createdAt || review.$id).toLocaleTimeString()}
+                        </p>
                     </div>
                 ))}
             </div>
