@@ -1,7 +1,6 @@
 "use client";
 import { useState, useEffect } from 'react';
 import { MoreVertical, Trash2, Edit } from 'lucide-react';
-// Adjust the import path if necessary
 import { useAppwrite } from '../lib/appwriteContext';
 
 export default function SavedReviewsPage() {
@@ -12,6 +11,11 @@ export default function SavedReviewsPage() {
     const [selectedReview, setSelectedReview] = useState(null);
 
     useEffect(() => {
+        if (!appwrite) {
+            setError('Appwrite client not initialized.');
+            setIsLoading(false);
+            return;
+        }
         const fetchReviews = async () => {
             try {
                 const response = await appwrite.database.listDocuments(
@@ -31,6 +35,7 @@ export default function SavedReviewsPage() {
     }, [appwrite]);
 
     const handleDelete = async (reviewId) => {
+        if (!appwrite) return;
         try {
             await appwrite.database.deleteDocument(
                 process.env.NEXT_PUBLIC_APPWRITE_DATABASE_ID,
