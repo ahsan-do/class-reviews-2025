@@ -1,50 +1,47 @@
-// src/app/saved-reviews/page.js
-"use client";
 import { useState, useEffect } from 'react';
-import {Heart, Loader2} from 'lucide-react';
-import Link from 'next/link';
+import {MoreVertical, Trash2, Edit, Loader2} from 'lucide-react';
+import { useAppwrite } from '../../context/AppwriteContext';
 
 export default function SavedReviewsPage() {
-    const [draftReviews, setDraftReviews] = useState([]);
-    const [savedReviews, setSavedReviews] = useState([]);
-    const [appwrite, setAppwrite] = useState(null);
+    const { appwrite } = useAppwrite();
+    const [reviews, setReviews] = useState([]);
     const [isLoading, setIsLoading] = useState(true);
     const [error, setError] = useState(null);
+    const [selectedReview, setSelectedReview] = useState(null);
 
     useEffect(() => {
-        const initialize = async () => {
-            const { default: initializeAppwrite } = await import('../lib/appwriteClient');
-            const appwriteInstance = initializeAppwrite();
-            setAppwrite(appwriteInstance);
-
-            const currentUser = await appwriteInstance.getCurrentUser();
-            const { databases, Query } = appwriteInstance;
-
+        const fetchReviews = async () => {
             try {
-                // Fetch draft reviews
-                const draftResponse = await databases.listDocuments(
+                const response = await appwrite.database.listDocuments(
                     process.env.NEXT_PUBLIC_APPWRITE_DATABASE_ID,
-                    process.env.NEXT_PUBLIC_APPWRITE_DRAFTS_COLLECTION_ID,
-                    [Query.equal('userId', currentUser.$id)]
+                    process.env.NEXT_PUBLIC_APPWRITE_REVIEWS_COLLECTION_ID,
+                    [appwrite.query.equal('isSaved', true)]
                 );
-                setDraftReviews(draftResponse.documents);
-
-                // Fetch saved reviews
-                const savedResponse = await databases.listDocuments(
-                    process.env.NEXT_PUBLIC_APPWRITE_DATABASE_ID,
-                    process.env.NEXT_PUBLIC_APPWRITE_SAVED_COLLECTION_ID,
-                    [Query.equal('userId', currentUser.$id)]
-                );
-                setSavedReviews(savedResponse.documents);
+                setReviews(response.documents);
             } catch (err) {
                 console.error('Error fetching reviews:', err);
-                setError('Failed to load reviews. Please try again.');
+                setError('Failed to load reviews.');
             } finally {
                 setIsLoading(false);
             }
         };
-        initialize();
-    }, []);
+        fetchReviews();
+    }, [appwrite]);
+
+    const handleDelete = async (reviewId) => {
+        try {
+            await appwrite.database.deleteDocument(
+                process.env.NEXT_PUBLIC_APPWRITE_DATABASE_ID,
+                process.env.NEXT_PUBLIC_APPWRITE_REVIEWS_COLLECTION_ID,
+                reviewId
+            );
+            setReviews(reviews.filter((review) => review.$id !== reviewId));
+            setSelectedReview(null);
+        } catch (err) {
+            console.error('Error deleting review:', err);
+            setError('Failed to delete review.');
+        }
+    };
 
     if (isLoading){
         return (
@@ -55,43 +52,40 @@ export default function SavedReviewsPage() {
             </div>
         )
     }
-
-    if (error) return <div className="text-red-500">{error}</div>;
+    if (error) return <div className="text-center py-10 text-red-500">{error}</div>;
+    if (reviews.length === 0) return <div className="text-center py-10">No saved reviews yet.</div>;
 
     return (
-        <div className="min-h-screen bg-gradient-to-br from-indigo-50 via-white to-purple-50 p-4">
-            <div className="max-w-4xl mx-auto">
-                <Link href="/" className="text-indigo-600 hover:underline mb-4 inline-block">
-                    ← Back to Home
-                </Link>
-                <h1 className="text-3xl font-bold mb-6">Saved Reviews</h1>
-                <h2 className="text-xl font-semibold mb-4">Your Draft Reviews</h2>
-                {draftReviews.length > 0 ? (
-                    <div className="space-y-4">
-                        {draftReviews.map((draft) => (
-                            <div key={draft.$id} className="p-4 bg-white rounded-lg shadow">
-                                <p>{draft.content}</p>
-                                <p className="text-sm text-gray-600">Category: {draft.category}</p>
-                                <p className="text-sm text-gray-600">Nickname: {draft.nickname}</p>
+        <div className="max-w-4xl mx-auto px-4 py-6">
+            <h1 className="text-3xl font-bold mb-6">Saved Reviews</h1>
+            <div className="grid gap-6">
+                {reviews.map((review) => (
+                    <div key={review.$id} className="bg-white rounded-lg shadow-md p-4 relative">
+                        <div className="flex justify-end">
+                            <button
+                                onClick={() => setSelectedReview(selectedReview?.$id === review.$id ? null : review)}
+                                className="text-gray-500 hover:text-gray-700 absolute top-2 right-2"
+                            >
+                                <MoreVertical size={20} />
+                            </button>
+                        </div>
+                        {selectedReview?.$id === review.$id && (
+                            <div className="absolute top-2 right-10 bg-gray-100 p-2 rounded shadow-md">
+                                <button
+                                    onClick={() => handleDelete(review.$id)}
+                                    className="flex items-center text-red-500 hover:text-red-700 mb-2"
+                                >
+                                    <Trash2 size={16} className="mr-1" /> Delete
+                                </button>
+                                <button className="flex items-center text-blue-500 hover:text-blue-700">
+                                    <Edit size={16} className="mr-1" /> Edit
+                                </button>
                             </div>
-                        ))}
+                        )}
+                        <p className="text-gray-800">{review.content}</p>
+                        <p className="text-sm text-gray-500 mt-2">Saved at: {new Date(review.$id).toLocaleString()}</p> {/* Potential issue here */}
                     </div>
-                ) : (
-                    <p>No draft reviews found.</p>
-                )}
-                <h2 className="text-xl font-semibold mb-4 mt-6">Saved Others' Reviews</h2>
-                {savedReviews.length > 0 ? (
-                    <div className="space-y-4">
-                        {savedReviews.map((saved) => (
-                            <div key={saved.$id} className="p-4 bg-white rounded-lg shadow">
-                                <p>Review ID: {saved.reviewId}</p>
-                                {/* Fetch original review content if needed by querying the main collection */}
-                            </div>
-                        ))}
-                    </div>
-                ) : (
-                    <p>No saved reviews found.</p>
-                )}
+                ))}
             </div>
         </div>
     );
