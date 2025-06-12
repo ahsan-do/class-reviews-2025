@@ -46,12 +46,17 @@ const ReviewItem = ({
     const categoryColor = categoryColors[editedCategory] || 'bg-gray-200 text-gray-800';
     const menuRef = useRef(null);
     const cardRef = useRef(null);
-    const appwrite = useAppwrite() || { client: null, databases: null, storage: null };
+    const { client, databases: db, storage: st, isLoading, error } = useAppwrite();
+
+    // Fallback to props if context fails
+    const appwriteDatabases = db || databases;
+    const appwriteStorage = st || storage;
+    const appwriteClient = client;
 
     // Generate proper image URL with authentication
     useEffect(() => {
         const generateImageUrl = async () => {
-            if (!appwrite.storage || !review.imageUrl) {
+            if (!appwriteStorage || !review.imageUrl || isLoading) {
                 setSignedImageUrl(null);
                 return;
             }
@@ -62,7 +67,6 @@ const ReviewItem = ({
             try {
                 console.log('Original imageUrl:', review.imageUrl);
 
-                // Extract file ID from URL
                 const urlParts = review.imageUrl.split('/');
                 let fileId = null;
                 const filesIndex = urlParts.indexOf('files');
@@ -79,16 +83,14 @@ const ReviewItem = ({
                 const bucketId = process.env.NEXT_PUBLIC_APPWRITE_BUCKET_ID;
                 if (!bucketId) {
                     console.error('Bucket ID not found in environment variables');
-                    console.error('Available env vars:', Object.keys(process.env).filter(key => key.includes('APPWRITE')));
                     setImageError(true);
                     setImageLoading(false);
                     return;
                 }
                 console.log('Using bucketId:', bucketId);
 
-                // Verify file exists
                 try {
-                    const fileInfo = await appwrite.storage.getFile(bucketId, fileId);
+                    const fileInfo = await appwriteStorage.getFile(bucketId, fileId);
                     console.log('File exists - info:', fileInfo);
                 } catch (fileError) {
                     console.error('File verification failed:', fileError);
@@ -97,9 +99,8 @@ const ReviewItem = ({
                     return;
                 }
 
-                // Generate signed URL using getFileView
                 try {
-                    const preview = appwrite.storage.getFileView(bucketId, fileId);
+                    const preview = appwriteStorage.getFileView(bucketId, fileId);
                     const urlString = preview.href || preview.toString();
                     console.log('Generated signed URL:', urlString);
                     setSignedImageUrl(urlString);
@@ -118,25 +119,25 @@ const ReviewItem = ({
         };
 
         generateImageUrl();
-    }, [review.imageUrl, appwrite.storage]);
+    }, [review.imageUrl, appwriteStorage, isLoading]);
 
     // Handle click outside to close menu
     useEffect(() => {
         const handleClickOutside = (event) => {
-            if (!appwrite.client || !menuRef.current || !cardRef.current) return;
+            if (!appwriteClient || !menuRef.current || !cardRef.current || isLoading) return;
             if (!menuRef.current.contains(event.target) && !cardRef.current.contains(event.target)) {
                 setIsMenuOpen(false);
             }
         };
-        document.addEventListener('mousedown', handleClickOutside);
-        return () => {
-            document.removeEventListener('mousedown', handleClickOutside);
-        };
-    }, [isMenuOpen, menuRef, cardRef, appwrite.client]);
+        if (!isLoading) {
+            document.addEventListener('mousedown', handleClickOutside);
+            return () => document.removeEventListener('mousedown', handleClickOutside);
+        }
+    }, [isMenuOpen, menuRef, cardRef, appwriteClient, isLoading]);
 
     // Adjust menu position based on viewport
     useEffect(() => {
-        if (!appwrite.client || !isMenuOpen || !cardRef.current || !menuRef.current) return;
+        if (!appwriteClient || !isMenuOpen || !cardRef.current || !menuRef.current || isLoading) return;
 
         const cardRect = cardRef.current.getBoundingClientRect();
         const menuElement = menuRef.current;
@@ -155,23 +156,20 @@ const ReviewItem = ({
         }
         menuElement.style.maxHeight = 'calc(100vh - 4rem)';
         menuElement.style.overflowY = 'auto';
-    }, [isMenuOpen, cardRef, menuRef, appwrite.client]);
+    }, [isMenuOpen, cardRef, menuRef, appwriteClient, isLoading]);
 
     const handleUpdate = async (e) => {
         e.preventDefault();
-        if (!databases) {
+        if (!appwriteDatabases) {
             console.error('Databases not available');
             return;
         }
         try {
-            await databases.updateDocument(
+            await appwriteDatabases.updateDocument(
                 process.env.NEXT_PUBLIC_APPWRITE_DATABASE_ID,
                 process.env.NEXT_PUBLIC_APPWRITE_COLLECTION_ID,
                 review.id,
-                {
-                    content: editedContent,
-                    category: editedCategory,
-                }
+                { content: editedContent, category: editedCategory },
             );
             setIsEditing(false);
             setIsMenuOpen(false);
@@ -183,7 +181,7 @@ const ReviewItem = ({
 
     const handleDelete = async () => {
         if (window.confirm('Are you sure you want to delete this review?')) {
-            if (!databases || !storage) {
+            if (!appwriteDatabases || !appwriteStorage) {
                 console.error('Databases or storage not available');
                 return;
             }
@@ -197,20 +195,17 @@ const ReviewItem = ({
                     }
                     if (fileId) {
                         try {
-                            await storage.deleteFile(
-                                process.env.NEXT_PUBLIC_APPWRITE_BUCKET_ID,
-                                fileId
-                            );
+                            await appwriteStorage.deleteFile(process.env.NEXT_PUBLIC_APPWRITE_BUCKET_ID, fileId);
                             console.log('Image deleted successfully:', fileId);
                         } catch (deleteError) {
                             console.error('Error deleting image:', deleteError);
                         }
                     }
                 }
-                await databases.deleteDocument(
+                await appwriteDatabases.deleteDocument(
                     process.env.NEXT_PUBLIC_APPWRITE_DATABASE_ID,
                     process.env.NEXT_PUBLIC_APPWRITE_COLLECTION_ID,
-                    review.id
+                    review.id,
                 );
                 setIsMenuOpen(false);
                 fetchReviews();
@@ -219,6 +214,15 @@ const ReviewItem = ({
             }
         }
     };
+
+    if (isLoading) {
+        return (
+            <div className="text-center py-10 text-yellow-500">
+                Initializing...
+                {error && <p className="text-red-500 mt-2">{error}</p>}
+            </div>
+        );
+    }
 
     return (
         <div ref={cardRef} className="bg-white rounded-2xl shadow-sm border border-gray-100 p-4 sm:p-8 hover:shadow-md transition-all duration-200 relative mb-6">
@@ -230,23 +234,23 @@ const ReviewItem = ({
                     <div className="flex-1">
                         <p className="font-semibold text-gray-800">{nickname}</p>
                         <div className="flex items-center gap-2 text-sm text-gray-500" suppressHydrationWarning>
-                            <span className={`${categoryColor} px-2 py-1 rounded-full text-xs font-medium`}>
-                                {isEditing ? (
-                                    <select
-                                        value={editedCategory}
-                                        onChange={(e) => setEditedCategory(e.target.value)}
-                                        className={`${categoryColor.replace('text-', 'text-')} px-2 py-1 rounded-full text-xs font-medium`}
-                                    >
-                                        {Object.keys(categoryColors).map((cat) => (
-                                            <option key={cat} value={cat}>
-                                                {cat}
-                                            </option>
-                                        ))}
-                                    </select>
-                                ) : (
-                                    editedCategory
-                                )}
-                            </span>
+              <span className={`${categoryColor} px-2 py-1 rounded-full text-xs font-medium`}>
+                {isEditing ? (
+                    <select
+                        value={editedCategory}
+                        onChange={(e) => setEditedCategory(e.target.value)}
+                        className={`${categoryColor.replace('text-', 'text-')} px-2 py-1 rounded-full text-xs font-medium`}
+                    >
+                        {Object.keys(categoryColors).map((cat) => (
+                            <option key={cat} value={cat}>
+                                {cat}
+                            </option>
+                        ))}
+                    </select>
+                ) : (
+                    editedCategory
+                )}
+              </span>
                             <span>•</span>
                             <span>{new Date(review.timestamp).toLocaleDateString()}</span>
                         </div>
@@ -326,12 +330,12 @@ const ReviewItem = ({
             </div>
             {isEditing ? (
                 <form onSubmit={handleUpdate} className="mb-6">
-                    <textarea
-                        value={editedContent}
-                        onChange={(e) => setEditedContent(e.target.value)}
-                        className="w-full p-2 border border-gray-300 rounded-md mb-2 text-gray-800 leading-relaxed text-base sm:text-lg"
-                        rows="4"
-                    />
+          <textarea
+              value={editedContent}
+              onChange={(e) => setEditedContent(e.target.value)}
+              className="w-full p-2 border border-gray-300 rounded-md mb-2 text-gray-800 leading-relaxed text-base sm:text-lg"
+              rows="4"
+          />
                     <button
                         type="submit"
                         className="bg-blue-500 text-white px-4 py-2 rounded-md hover:bg-blue-600"
@@ -384,7 +388,7 @@ const ReviewItem = ({
                                         currentSrc: e.target?.currentSrc,
                                         src: e.target?.src,
                                         status: e.target?.complete,
-                                        networkState: e.target?.networkState
+                                        networkState: e.target?.networkState,
                                     });
                                     setImageError(true);
                                 }}
@@ -450,8 +454,8 @@ const ReviewItem = ({
                         <Icon size={16} className={`${color} group-hover:scale-110 transition-transform`} />
                         {review.reactions[key] > 0 && (
                             <span className="text-sm font-semibold text-gray-700">
-                                {review.reactions[key]}
-                            </span>
+                {review.reactions[key]}
+              </span>
                         )}
                     </button>
                 ))}

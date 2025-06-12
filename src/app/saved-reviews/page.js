@@ -1,4 +1,3 @@
-// Fixed saved-reviews page
 "use client";
 import { useState, useEffect } from 'react';
 import { MoreVertical, Trash2, Edit } from 'lucide-react';
@@ -12,7 +11,9 @@ export default function SavedReviewsPage() {
     const [isLoading, setIsLoading] = useState(true);
     const [error, setError] = useState(null);
     const [selectedReview, setSelectedReview] = useState(null);
-
+    console.log('Appwrite:', appwrite);
+    console.log('Loading:', isLoading);
+    console.log('Error:', error);
     useEffect(() => {
         if (!appwrite) {
             setIsLoading(false);
@@ -29,7 +30,7 @@ export default function SavedReviewsPage() {
                 setReviews(response.documents);
             } catch (err) {
                 console.error('Error fetching reviews:', err);
-                setError('Failed to load reviews.');
+                setError(err.message || 'Failed to load reviews.');
             } finally {
                 setIsLoading(false);
             }
@@ -51,7 +52,7 @@ export default function SavedReviewsPage() {
             setSelectedReview(null);
         } catch (err) {
             console.error('Error deleting review:', err);
-            setError('Failed to delete review.');
+            setError(err.message || 'Failed to delete review.');
         }
     };
 
@@ -70,6 +71,7 @@ export default function SavedReviewsPage() {
                             <button
                                 onClick={() => setSelectedReview(selectedReview?.$id === review.$id ? null : review)}
                                 className="text-gray-500 hover:text-gray-700 absolute top-2 right-2"
+                                aria-label="More options"
                             >
                                 <MoreVertical size={20} />
                             </button>
@@ -79,10 +81,11 @@ export default function SavedReviewsPage() {
                                 <button
                                     onClick={() => handleDelete(review.$id)}
                                     className="flex items-center text-red-500 hover:text-red-700 mb-2"
+                                    aria-label="Delete review"
                                 >
                                     <Trash2 size={16} className="mr-1" /> Delete
                                 </button>
-                                <button className="flex items-center text-blue-500 hover:text-blue-700">
+                                <button className="flex items-center text-blue-500 hover:text-blue-700" aria-label="Edit review">
                                     <Edit size={16} className="mr-1" /> Edit
                                 </button>
                             </div>
