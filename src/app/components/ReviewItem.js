@@ -48,15 +48,10 @@ const ReviewItem = ({
     const cardRef = useRef(null);
     const appwrite = useAppwrite() || { client: null, databases: null, storage: null };
 
-    // Handle uninitialized appwrite state (render bailout)
-    if (!appwrite.client || !appwrite.databases || !appwrite.storage) {
-        return <div className="text-center py-10 text-yellow-500">Initializing Appwrite...</div>;
-    }
-
     // Generate proper image URL with authentication
     useEffect(() => {
         const generateImageUrl = async () => {
-            if (!review.imageUrl || !appwrite.storage) {
+            if (!appwrite.storage || !review.imageUrl) {
                 setSignedImageUrl(null);
                 return;
             }
@@ -128,7 +123,8 @@ const ReviewItem = ({
     // Handle click outside to close menu
     useEffect(() => {
         const handleClickOutside = (event) => {
-            if (menuRef.current && !menuRef.current.contains(event.target) && cardRef.current && !cardRef.current.contains(event.target)) {
+            if (!appwrite.client || !menuRef.current || !cardRef.current) return;
+            if (!menuRef.current.contains(event.target) && !cardRef.current.contains(event.target)) {
                 setIsMenuOpen(false);
             }
         };
@@ -136,11 +132,11 @@ const ReviewItem = ({
         return () => {
             document.removeEventListener('mousedown', handleClickOutside);
         };
-    }, [isMenuOpen, menuRef, cardRef]);
+    }, [isMenuOpen, menuRef, cardRef, appwrite.client]);
 
     // Adjust menu position based on viewport
     useEffect(() => {
-        if (!isMenuOpen || !cardRef.current || !menuRef.current) return;
+        if (!appwrite.client || !isMenuOpen || !cardRef.current || !menuRef.current) return;
 
         const cardRect = cardRef.current.getBoundingClientRect();
         const menuElement = menuRef.current;
@@ -159,7 +155,7 @@ const ReviewItem = ({
         }
         menuElement.style.maxHeight = 'calc(100vh - 4rem)';
         menuElement.style.overflowY = 'auto';
-    }, [isMenuOpen, cardRef, menuRef]);
+    }, [isMenuOpen, cardRef, menuRef, appwrite.client]);
 
     const handleUpdate = async (e) => {
         e.preventDefault();
