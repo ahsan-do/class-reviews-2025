@@ -1,8 +1,6 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
     images: {
-        domains: ['fra.cloud.appwrite.io'],
-        // Alternative: use remotePatterns for more control
         remotePatterns: [
             {
                 protocol: 'https',
