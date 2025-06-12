@@ -48,17 +48,15 @@ const ReviewItem = ({
     const cardRef = useRef(null);
     const appwrite = useAppwrite() || { client: null, databases: null, storage: null };
 
-    // Handle uninitialized appwrite state
-    const isAppwriteReady = appwrite.client && appwrite.databases && appwrite.storage;
-    if (!isAppwriteReady) {
-        console.warn('Appwrite not fully initialized in ReviewItem, retrying...');
+    // Handle uninitialized appwrite state (render bailout)
+    if (!appwrite.client || !appwrite.databases || !appwrite.storage) {
         return <div className="text-center py-10 text-yellow-500">Initializing Appwrite...</div>;
     }
 
     // Generate proper image URL with authentication
     useEffect(() => {
         const generateImageUrl = async () => {
-            if (!review.imageUrl || !isAppwriteReady) {
+            if (!review.imageUrl || !appwrite.storage) {
                 setSignedImageUrl(null);
                 return;
             }
@@ -125,7 +123,43 @@ const ReviewItem = ({
         };
 
         generateImageUrl();
-    }, [review.imageUrl, isAppwriteReady, appwrite.storage]);
+    }, [review.imageUrl, appwrite.storage]);
+
+    // Handle click outside to close menu
+    useEffect(() => {
+        const handleClickOutside = (event) => {
+            if (menuRef.current && !menuRef.current.contains(event.target) && cardRef.current && !cardRef.current.contains(event.target)) {
+                setIsMenuOpen(false);
+            }
+        };
+        document.addEventListener('mousedown', handleClickOutside);
+        return () => {
+            document.removeEventListener('mousedown', handleClickOutside);
+        };
+    }, [isMenuOpen, menuRef, cardRef]);
+
+    // Adjust menu position based on viewport
+    useEffect(() => {
+        if (!isMenuOpen || !cardRef.current || !menuRef.current) return;
+
+        const cardRect = cardRef.current.getBoundingClientRect();
+        const menuElement = menuRef.current;
+        const menuWidth = menuElement.offsetWidth;
+        const viewportWidth = window.innerWidth;
+        const cardRight = cardRect.right;
+
+        if (cardRight + menuWidth > viewportWidth) {
+            menuElement.style.left = 'auto';
+            menuElement.style.right = '100%';
+            menuElement.style.transform = 'translateX(-100%)';
+        } else {
+            menuElement.style.right = '0';
+            menuElement.style.left = '100%';
+            menuElement.style.transform = 'translateX(0)';
+        }
+        menuElement.style.maxHeight = 'calc(100vh - 4rem)';
+        menuElement.style.overflowY = 'auto';
+    }, [isMenuOpen, cardRef, menuRef]);
 
     const handleUpdate = async (e) => {
         e.preventDefault();
@@ -189,44 +223,6 @@ const ReviewItem = ({
             }
         }
     };
-
-    // Handle click outside to close menu
-    useEffect(() => {
-        const handleClickOutside = (event) => {
-            if (menuRef.current && !menuRef.current.contains(event.target) && cardRef.current && !cardRef.current.contains(event.target)) {
-                setIsMenuOpen(false);
-            }
-        };
-        document.addEventListener('mousedown', handleClickOutside);
-        return () => {
-            document.removeEventListener('mousedown', handleClickOutside);
-        };
-    }, []);
-
-    // Adjust menu position based on viewport
-    useEffect(() => {
-        if (isMenuOpen && cardRef.current) {
-            const cardRect = cardRef.current.getBoundingClientRect();
-            const menuElement = menuRef.current;
-            if (menuElement) {
-                const menuWidth = menuElement.offsetWidth;
-                const viewportWidth = window.innerWidth;
-                const cardRight = cardRect.right;
-
-                if (cardRight + menuWidth > viewportWidth) {
-                    menuElement.style.left = 'auto';
-                    menuElement.style.right = '100%';
-                    menuElement.style.transform = 'translateX(-100%)';
-                } else {
-                    menuElement.style.right = '0';
-                    menuElement.style.left = '100%';
-                    menuElement.style.transform = 'translateX(0)';
-                }
-                menuElement.style.maxHeight = 'calc(100vh - 4rem)';
-                menuElement.style.overflowY = 'auto';
-            }
-        }
-    }, [isMenuOpen]);
 
     return (
         <div ref={cardRef} className="bg-white rounded-2xl shadow-sm border border-gray-100 p-4 sm:p-8 hover:shadow-md transition-all duration-200 relative mb-6">
