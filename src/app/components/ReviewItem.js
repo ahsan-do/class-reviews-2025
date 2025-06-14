@@ -42,16 +42,29 @@ const ReviewItem = ({
     const [signedImageUrl, setSignedImageUrl] = useState(null);
     const [imageError, setImageError] = useState(false);
     const [imageLoading, setImageLoading] = useState(false);
+    const [avatarUrl, setAvatarUrl] = useState(null); // New state for avatar
+    const [avatarLoading, setAvatarLoading] = useState(true); // New state for avatar loading
+    const [avatarError, setAvatarError] = useState(false); // New state for avatar error
 
     const categoryColor = categoryColors[editedCategory] || 'bg-gray-200 text-gray-800';
     const menuRef = useRef(null);
     const cardRef = useRef(null);
-    const { client, databases: db, storage: st, isLoading, error } = useAppwrite();
+    const { client, account, databases: db, storage: st, isLoading, error } = useAppwrite();
 
     // Fallback to props if context fails
     const appwriteDatabases = db || databases;
     const appwriteStorage = st || storage;
     const appwriteClient = client;
+
+    // Use review.avatarUrl if available, otherwise fallback to placeholder
+    useEffect(() => {
+        setAvatarLoading(true);
+        setAvatarError(false);
+        const avatar = review.avatarUrl || 'https://via.placeholder.com/50?text=U'; // Adjust 'avatarUrl' to your actual field name
+        setAvatarUrl(avatar);
+        setAvatarLoading(false);
+        console.log('Using avatar URL from review:', avatar);
+    }, [review]); // Use the entire review object to ensure stability
 
     // Generate proper image URL with authentication
     useEffect(() => {
@@ -228,9 +241,27 @@ const ReviewItem = ({
         <div ref={cardRef} className="bg-white rounded-2xl shadow-sm border border-gray-100 p-4 sm:p-8 hover:shadow-md transition-all duration-200 relative mb-6">
             <div className="flex flex-col sm:flex-row items-start justify-between mb-4">
                 <div className="flex items-center gap-3 mb-4 sm:mb-0 w-full sm:w-auto">
-                    <div className="w-10 h-10 bg-gradient-to-r from-indigo-400 to-purple-400 rounded-full flex items-center justify-center text-white font-bold">
-                        {nickname.charAt(0).toUpperCase()}
-                    </div>
+                    {avatarLoading ? (
+                        <div className="w-10 h-10 bg-gray-200 rounded-full flex items-center justify-center">
+                            <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-indigo-500"></div>
+                        </div>
+                    ) : avatarError || !avatarUrl ? (
+                        <div className="w-10 h-10 bg-gradient-to-r from-indigo-400 to-purple-400 rounded-full flex items-center justify-center text-white font-bold">
+                            {nickname.charAt(0).toUpperCase()}
+                        </div>
+                    ) : (
+                        <Image
+                            src={avatarUrl}
+                            alt={`${nickname}'s avatar`}
+                            width={40}
+                            height={40}
+                            className="rounded-full object-cover"
+                            onError={() => {
+                                setAvatarError(true);
+                                setAvatarUrl('https://via.placeholder.com/50?text=U');
+                            }}
+                        />
+                    )}
                     <div className="flex-1">
                         <p className="font-semibold text-gray-800">{nickname}</p>
                         <div className="flex items-center gap-2 text-sm text-gray-500" suppressHydrationWarning>

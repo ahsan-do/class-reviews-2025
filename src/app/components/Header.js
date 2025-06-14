@@ -2,7 +2,7 @@
 import { useState, useEffect } from 'react';
 import { Plus, User, Heart } from 'lucide-react';
 import UserDashboard from './UserDashboard';
-import Link from 'next/link';
+
 import dynamic from 'next/dynamic';
 
 const DynamicRouter = dynamic(() => import('next/router').then((mod) => mod.useRouter), {

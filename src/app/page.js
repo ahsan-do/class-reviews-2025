@@ -1,4 +1,3 @@
-// src/app/page.js (Home.js)
 "use client";
 import { useState, useEffect, useRef } from 'react';
 import { Heart, Smile, AlertCircle, Frown, Flame, Filter, Loader2 } from 'lucide-react';
@@ -11,6 +10,18 @@ import { useRouter } from 'next/navigation';
 
 // Optional: Force dynamic rendering to avoid prerendering issues
 export const dynamic = 'force-dynamic';
+
+// Export utility functions at file level
+export const getTotalReactions = (reactions) => {
+  return Object.values(reactions || {}).reduce((sum, val) => sum + val, 0);
+};
+
+export const getTopReaction = (reactions) => {
+  if (!reactions || typeof reactions !== 'object') return null; // Safeguard against undefined/null
+  const maxReaction = Math.max(...Object.values(reactions));
+  if (maxReaction === 0) return null;
+  return Object.entries(reactions).find(([_, count]) => count === maxReaction)?.[0];
+};
 
 export default function Home() {
   const [reviews, setReviews] = useState([]);
@@ -94,7 +105,8 @@ export default function Home() {
                 reactions: JSON.parse(doc.reaction || '{}'),
                 timestamp: new Date(doc.$createdAt),
                 userReactions: JSON.parse(doc.userReactions || '{}'),
-                authorId: doc.userId, // Map to authorId from userId
+                authorId: doc.userId,
+                avatarUrl: doc.avatarUrl || 'https://via.placeholder.com/50?text=U', // Add avatarUrl from document
               })),
           );
           setError(null);
@@ -125,7 +137,7 @@ export default function Home() {
       setError('Review content cannot exceed 500 characters.');
       return;
     }
-    if (newReview.nickname.length > 50) {
+    if (newReview.nickname && newReview.nickname.length > 50) {
       setError('Nickname cannot exceed 50 characters.');
       return;
     }
@@ -141,7 +153,7 @@ export default function Home() {
 
     setIsLoading(true);
     let imageUrl = null;
-    const { storage, databases, ID, Query } = appwrite;
+    const { storage, databases, ID } = appwrite;
 
     if (newReview.image) {
       const file = new File([newReview.image], newReview.image.name, { type: newReview.image.type });
@@ -151,7 +163,7 @@ export default function Home() {
             ID.unique(),
             file,
         );
-        imageUrl = `https://fra.cloud.appwrite.io/v1/storage/buckets/${process.env.NEXT_PUBLIC_APPWRITE_BUCKET_ID}/files/${uploadResponse.$id}/view?project=${process.env.NEXT_PUBLIC_APPWRITE_PROJECT_ID}`;
+        imageUrl = `${process.env.NEXT_PUBLIC_APPWRITE_ENDPOINT}/storage/buckets/${process.env.NEXT_PUBLIC_APPWRITE_BUCKET_ID}/files/${uploadResponse.$id}/view?project=${process.env.NEXT_PUBLIC_APPWRITE_PROJECT_ID}`;
       } catch (err) {
         console.error('Error uploading image:', err);
         setError('Failed to upload image. Please try again.');
@@ -160,15 +172,19 @@ export default function Home() {
       }
     }
 
+    const user = await appwrite.account.get(); // Fetch current user to get avatar
+    const avatarUrl = user.prefs?.avatar || 'https://via.placeholder.com/50?text=U';
+
     const reviewData = {
       content: newReview.content,
       category: newReview.category,
       nickname: newReview.nickname.trim() || `Anonymous_${Math.floor(Math.random() * 100)}`,
-      imageUrl: imageUrl,
+      imageUrl,
+      avatarUrl, // Add avatarUrl to the review data
       reaction: JSON.stringify({ heart: 0, laugh: 0, surprise: 0, sad: 0, fire: 0 }),
       timestamp: new Date().toISOString(),
       userReactions: JSON.stringify({}),
-      userId: userId, // Store the author’s ID
+      userId, // Store the author’s ID
     };
 
     const tempReview = {
@@ -195,7 +211,7 @@ export default function Home() {
       setError('Failed to submit review. Please try again.');
     } finally {
       setIsLoading(false);
-      await fetchReviews();
+      await fetchReviews(); // Ensure the list is refreshed
     }
   };
 
@@ -223,6 +239,7 @@ export default function Home() {
             timestamp: new Date(doc.$createdAt),
             userReactions: JSON.parse(doc.userReactions || '{}'),
             authorId: doc.userId,
+            avatarUrl: doc.avatarUrl || 'https://via.placeholder.com/50?text=U', // Add avatarUrl from document
           })),
       );
       setError(null);
@@ -395,24 +412,14 @@ export default function Home() {
     let filtered = filter === 'All' ? reviews : reviews.filter((review) => review.category === filter);
     if (sortBy === 'Popular') {
       filtered = filtered.sort((a, b) => {
-        const aTotal = Object.values(a.reactions || {}).reduce((sum, val) => sum + val, 0);
-        const bTotal = Object.values(b.reactions || {}).reduce((sum, val) => sum + val, 0);
+        const aTotal = getTotalReactions(a.reactions);
+        const bTotal = getTotalReactions(b.reactions);
         return bTotal - aTotal;
       });
     } else {
       filtered = filtered.sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
     }
     return filtered;
-  };
-
-  const getTotalReactions = (reactions) => {
-    return Object.values(reactions || {}).reduce((sum, val) => sum + val, 0);
-  };
-
-  const getTopReaction = (reactions) => {
-    const maxReaction = Math.max(...Object.values(reactions || {}));
-    if (maxReaction === 0) return null;
-    return Object.entries(reactions || {}).find(([_, count]) => count === maxReaction)?.[0];
   };
 
   useEffect(() => {

@@ -2,9 +2,11 @@
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
-import Image from "next/image";
+import Image from 'next/image';
+import { useAppwrite } from '../lib/appwriteContext';
 
 export default function Page() {
+    const { createSession, createAccount, isLoading: contextLoading, error: contextError, account } = useAppwrite();
     const [isLogin, setIsLogin] = useState(true);
     const [email, setEmail] = useState('');
     const [password, setPassword] = useState('');
@@ -14,39 +16,49 @@ export default function Page() {
     const router = useRouter();
 
     useEffect(() => {
-        const initializeAuth = async () => {
-            const { default: initializeAppwrite } = await import('../lib/appwriteClient');
-            const appwrite = initializeAppwrite();
-            if (appwrite) {
-                const user = await appwrite.getCurrentUser();
+        if (contextLoading || contextError || !account) return; // Wait for context and account
+        const checkSession = async () => {
+            try {
+                const user = await account.get();
                 if (user) router.push('/');
+            } catch (err) {
+                console.log('No session or error on auth page:', err.message); // Expected behavior
             }
         };
-        initializeAuth();
-    }, [router]);
+        checkSession();
+    }, [contextLoading, contextError, account, router]);
 
     const handleAuth = async (e) => {
         e.preventDefault();
         setIsLoading(true);
         setError(null);
 
-        const { default: initializeAppwrite } = await import('../lib/appwriteClient');
-        const appwrite = initializeAppwrite();
-
         try {
-            if (!appwrite) throw new Error('Appwrite client not initialized');
             if (isLogin) {
-                await appwrite.login(email, password);
+                console.log('Attempting login with:', { email, password });
+                const session = await createSession(email, password);
+                console.log('Login successful, session:', session);
             } else {
-                await appwrite.signup(email, password, name);
+                console.log('Attempting signup with:', { email, password, name });
+                const session = await createAccount(email, password, name);
+                console.log('Signup successful, session:', session);
             }
             router.push('/');
         } catch (err) {
-            setError(err.message || 'Authentication failed');
+            console.error('Authentication error:', err);
+            setError(err.message || 'Authentication failed. Check your email or password.');
         } finally {
             setIsLoading(false);
         }
     };
+
+    if (contextLoading) {
+        return <div className="flex items-center justify-center min-h-screen">Loading...</div>;
+    }
+
+    if (contextError) {
+        return <div className="flex items-center justify-center min-h-screen text-red-500">{contextError}</div>;
+    }
 
     return (
         <div className="min-h-screen bg-gradient-to-br from-indigo-50 via-white to-purple-50 flex items-center justify-center p-4">
@@ -54,16 +66,13 @@ export default function Page() {
                 {/* Left Side - Information */}
                 <div className="w-full md:w-1/2 p-6 bg-white rounded-xl shadow-md">
                     <h1 className="text-3xl font-bold text-purple-700 mb-4">Welcome to BSCS 2021-2025 Reviews</h1>
-                            <Image
-                                src={"https://fra.cloud.appwrite.io/v1/storage/buckets/68443e5c002ba7fbbac2/files/684b149c002b6dead57b/view?project=68442275000dd93461e7&mode=admin"}
-                                alt="Academic Block UAF"
-                                className="max-w-full max-h-full object-contain rounded-lg mb-4"
-                                width={300}
-                                height={200}
-
-                            />
-
-
+                    <Image
+                        src={"https://fra.cloud.appwrite.io/v1/storage/buckets/68443e5c002ba7fbbac2/files/684b149c002b6dead57b/view?project=68442275000dd93461e7&mode=admin"}
+                        alt="Academic Block UAF"
+                        className="max-w-full max-h-full object-contain rounded-lg mb-4"
+                        width={300}
+                        height={200}
+                    />
                     <p className="text-gray-600 mb-4">
                         Share your journey anonymously, connect with your batchmates, and build a community of stories
                         and memories. Whether it’s a heartwarming moment, a funny incident, or a lesson learned, your
