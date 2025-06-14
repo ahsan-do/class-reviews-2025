@@ -123,7 +123,7 @@ export default function SavedReviewsPage() {
                 ) : (
                     <p>No draft reviews found.</p>
                 )}
-                <h2 className="text-xl font-semibold mb-4 mt-6">Saved Others' Reviews</h2>
+                <h2 className="text-xl font-semibold mb-4 mt-6">Saved Other&apos;s Reviews</h2>
                 {savedReviews.length > 0 ? (
                     <div className="space-y-6">
                         {savedReviews.map((review) => {
