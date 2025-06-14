@@ -42,31 +42,28 @@ const ReviewItem = ({
     const [signedImageUrl, setSignedImageUrl] = useState(null);
     const [imageError, setImageError] = useState(false);
     const [imageLoading, setImageLoading] = useState(false);
-    const [avatarUrl, setAvatarUrl] = useState(null); // New state for avatar
-    const [avatarLoading, setAvatarLoading] = useState(true); // New state for avatar loading
-    const [avatarError, setAvatarError] = useState(false); // New state for avatar error
+    const [avatarUrl, setAvatarUrl] = useState(null);
+    const [avatarLoading, setAvatarLoading] = useState(true);
+    const [avatarError, setAvatarError] = useState(false);
 
     const categoryColor = categoryColors[editedCategory] || 'bg-gray-200 text-gray-800';
     const menuRef = useRef(null);
     const cardRef = useRef(null);
     const { client, account, databases: db, storage: st, isLoading, error } = useAppwrite();
 
-    // Fallback to props if context fails
     const appwriteDatabases = db || databases;
     const appwriteStorage = st || storage;
     const appwriteClient = client;
 
-    // Use review.avatarUrl if available, otherwise fallback to placeholder
     useEffect(() => {
         setAvatarLoading(true);
         setAvatarError(false);
-        const avatar = review.avatarUrl || 'https://via.placeholder.com/50?text=U'; // Adjust 'avatarUrl' to your actual field name
+        const avatar = review.avatarUrl || 'https://via.placeholder.com/50?text=U';
         setAvatarUrl(avatar);
         setAvatarLoading(false);
         console.log('Using avatar URL from review:', avatar);
-    }, [review]); // Use the entire review object to ensure stability
+    }, [review]);
 
-    // Generate proper image URL with authentication
     useEffect(() => {
         const generateImageUrl = async () => {
             if (!appwriteStorage || !review.imageUrl || isLoading) {
@@ -78,14 +75,11 @@ const ReviewItem = ({
             setImageError(false);
 
             try {
-                console.log('Original imageUrl:', review.imageUrl);
-
                 const urlParts = review.imageUrl.split('/');
                 let fileId = null;
                 const filesIndex = urlParts.indexOf('files');
                 if (filesIndex !== -1 && filesIndex + 1 < urlParts.length) {
                     fileId = urlParts[filesIndex + 1].split('?')[0].replace('/view', '');
-                    console.log('Extracted fileId:', fileId);
                 } else {
                     console.error('Could not extract file ID from URL:', review.imageUrl);
                     setImageError(true);
@@ -100,11 +94,9 @@ const ReviewItem = ({
                     setImageLoading(false);
                     return;
                 }
-                console.log('Using bucketId:', bucketId);
 
                 try {
                     const fileInfo = await appwriteStorage.getFile(bucketId, fileId);
-                    console.log('File exists - info:', fileInfo);
                 } catch (fileError) {
                     console.error('File verification failed:', fileError);
                     setImageError(true);
@@ -115,7 +107,6 @@ const ReviewItem = ({
                 try {
                     const preview = appwriteStorage.getFileView(bucketId, fileId);
                     const urlString = preview.href || preview.toString();
-                    console.log('Generated signed URL:', urlString);
                     setSignedImageUrl(urlString);
                     setImageError(false);
                 } catch (viewError) {
@@ -134,7 +125,6 @@ const ReviewItem = ({
         generateImageUrl();
     }, [review.imageUrl, appwriteStorage, isLoading]);
 
-    // Handle click outside to close menu
     useEffect(() => {
         const handleClickOutside = (event) => {
             if (!appwriteClient || !menuRef.current || !cardRef.current || isLoading) return;
@@ -148,7 +138,6 @@ const ReviewItem = ({
         }
     }, [isMenuOpen, menuRef, cardRef, appwriteClient, isLoading]);
 
-    // Adjust menu position based on viewport
     useEffect(() => {
         if (!appwriteClient || !isMenuOpen || !cardRef.current || !menuRef.current || isLoading) return;
 
@@ -156,16 +145,26 @@ const ReviewItem = ({
         const menuElement = menuRef.current;
         const menuWidth = menuElement.offsetWidth;
         const viewportWidth = window.innerWidth;
-        const cardRight = cardRect.right;
 
-        if (cardRight + menuWidth > viewportWidth) {
-            menuElement.style.left = 'auto';
-            menuElement.style.right = '100%';
-            menuElement.style.transform = 'translateX(-100%)';
-        } else {
+        // Adjust menu position based on screen size
+        if (viewportWidth <= 640) { // Mobile breakpoint (e.g., tailwind's sm:640px)
+            menuElement.style.position = 'relative';
+            menuElement.style.left = '0';
             menuElement.style.right = '0';
-            menuElement.style.left = '100%';
-            menuElement.style.transform = 'translateX(0)';
+            menuElement.style.top = '100%'; // Open below the header inside the card
+            menuElement.style.transform = 'translateY(4px)';
+            menuElement.style.width = '100%';
+        } else {
+            const cardRight = cardRect.right;
+            if (cardRight + menuWidth > viewportWidth) {
+                menuElement.style.left = 'auto';
+                menuElement.style.right = '100%';
+                menuElement.style.transform = 'translateX(-100%)';
+            } else {
+                menuElement.style.right = '0';
+                menuElement.style.left = '100%';
+                menuElement.style.transform = 'translateX(0)';
+            }
         }
         menuElement.style.maxHeight = 'calc(100vh - 4rem)';
         menuElement.style.overflowY = 'auto';
@@ -207,12 +206,7 @@ const ReviewItem = ({
                         fileId = urlParts[filesIndex + 1].split('?')[0].replace('/view', '');
                     }
                     if (fileId) {
-                        try {
-                            await appwriteStorage.deleteFile(process.env.NEXT_PUBLIC_APPWRITE_BUCKET_ID, fileId);
-                            console.log('Image deleted successfully:', fileId);
-                        } catch (deleteError) {
-                            console.error('Error deleting image:', deleteError);
-                        }
+                        await appwriteStorage.deleteFile(process.env.NEXT_PUBLIC_APPWRITE_BUCKET_ID, fileId);
                     }
                 }
                 await appwriteDatabases.deleteDocument(
@@ -287,76 +281,78 @@ const ReviewItem = ({
                         </div>
                     </div>
                 </div>
-                {getTotalReactions(review.reactions) > 0 && (
-                    <div className="flex items-center gap-1 mt-2 sm:mt-0">
-                        <Star size={16} className="text-yellow-500 fill-current" />
-                        <span className="text-sm font-semibold text-gray-700">{getTotalReactions(review.reactions)}</span>
-                    </div>
-                )}
-                <div className="relative">
-                    <button
-                        onClick={() => setIsMenuOpen(!isMenuOpen)}
-                        className="text-gray-500 hover:text-gray-700 p-1 absolute top-2 right-2 z-20"
-                    >
-                        <MoreVertical size={20} />
-                    </button>
-                    {isMenuOpen && (
-                        <div
-                            ref={menuRef}
-                            className="absolute mt-2 w-32 min-w-[150px] bg-white border border-gray-200 rounded-md shadow-lg z-30 origin-top-right"
-                        >
-                            {userId === review.authorId && (
-                                <>
-                                    <button
-                                        onClick={() => {
-                                            setIsEditing(true);
-                                            setIsMenuOpen(false);
-                                        }}
-                                        className="w-full text-left px-4 py-2 text-blue-500 hover:bg-gray-100 flex items-center gap-2"
-                                    >
-                                        <Pencil size={16} /> Edit
-                                    </button>
-                                    <button
-                                        onClick={handleDelete}
-                                        className="w-full text-left px-4 py-2 text-red-500 hover:bg-gray-100 flex items-center gap-2"
-                                    >
-                                        <Trash2 size={16} /> Delete
-                                    </button>
-                                    <button
-                                        onClick={() => {
-                                            handleSaveReview(review.id);
-                                            setIsMenuOpen(false);
-                                        }}
-                                        className="w-full text-left px-4 py-2 text-green-500 hover:bg-gray-100 flex items-center gap-2"
-                                    >
-                                        <Bookmark size={16} /> Save
-                                    </button>
-                                </>
-                            )}
-                            {userId && userId !== review.authorId && (
-                                <>
-                                    <button
-                                        onClick={() => {
-                                            handleUserSave(review.id);
-                                            setIsMenuOpen(false);
-                                        }}
-                                        className="w-full text-left px-4 py-2 text-yellow-500 hover:bg-gray-100 flex items-center gap-2"
-                                    >
-                                        <Bookmark size={16} /> Save
-                                    </button>
-                                    <button
-                                        onClick={() => {
-                                            handleReportReview(review.id);
-                                            setIsMenuOpen(false);
-                                        }}
-                                        className="w-full text-left px-4 py-2 text-red-500 hover:bg-gray-100 flex items-center gap-2"
-                                    >
-                                        <Flag size={16} /> Report
-                                    </button>
-                                </>
-                            )}
+                <div className="flex items-center gap-2">
+                    {getTotalReactions(review.reactions) > 0 && (
+                        <div className="flex items-center gap-1">
+                            <Star size={16} className="text-yellow-500 fill-current" />
+                            <span className="text-sm font-semibold text-gray-700">{getTotalReactions(review.reactions)}</span>
                         </div>
                     )}
+                    <div className="relative">
+                        <button
+                            onClick={() => setIsMenuOpen(!isMenuOpen)}
+                            className="text-gray-500 hover:text-gray-700 p-1 z-20"
+                        >
+                            <MoreVertical size={20} />
+                        </button>
+                        {isMenuOpen && (
+                            <div
+                                ref={menuRef}
+                                className="absolute mt-2 w-32 min-w-[150px] bg-white border border-gray-200 rounded-md shadow-lg z-30 origin-top-right"
+                            >
+                                {userId === review.authorId && (
+                                    <>
+                                        <button
+                                            onClick={() => {
+                                                setIsEditing(true);
+                                                setIsMenuOpen(false);
+                                            }}
+                                            className="w-full text-left px-4 py-2 text-blue-500 hover:bg-gray-100 flex items-center gap-2"
+                                        >
+                                            <Pencil size={16} /> Edit
+                                        </button>
+                                        <button
+                                            onClick={handleDelete}
+                                            className="w-full text-left px-4 py-2 text-red-500 hover:bg-gray-100 flex items-center gap-2"
+                                        >
+                                            <Trash2 size={16} /> Delete
+                                        </button>
+                                        <button
+                                            onClick={() => {
+                                                handleSaveReview(review.id);
+                                                setIsMenuOpen(false);
+                                            }}
+                                            className="w-full text-left px-4 py-2 text-green-500 hover:bg-gray-100 flex items-center gap-2"
+                                        >
+                                            <Bookmark size={16} /> Save
+                                        </button>
+                                    </>
+                                )}
+                                {userId && userId !== review.authorId && (
+                                    <>
+                                        <button
+                                            onClick={() => {
+                                                handleUserSave(review.id);
+                                                setIsMenuOpen(false);
+                                            }}
+                                            className="w-full text-left px-4 py-2 text-yellow-500 hover:bg-gray-100 flex items-center gap-2"
+                                        >
+                                            <Bookmark size={16} /> Save
+                                        </button>
+                                        <button
+                                            onClick={() => {
+                                                handleReportReview(review.id);
+                                                setIsMenuOpen(false);
+                                            }}
+                                            className="w-full text-left px-4 py-2 text-red-500 hover:bg-gray-100 flex items-center gap-2"
+                                        >
+                                            <Flag size={16} /> Report
+                                        </button>
+                                    </>
+                                )}
+                            </div>
+                        )}
+                    </div>
                 </div>
             </div>
             {isEditing ? (
@@ -390,7 +386,6 @@ const ReviewItem = ({
                 <p className="text-gray-800 leading-relaxed mb-6 text-base sm:text-lg">{review.content}</p>
             )}
 
-            {/* Image Display */}
             {review.imageUrl && (
                 <>
                     {imageLoading && (
@@ -431,7 +426,6 @@ const ReviewItem = ({
                         </div>
                     )}
 
-                    {/* Enlarged Image Modal */}
                     {isImageEnlarged && signedImageUrl && (
                         <div
                             className="fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center z-50 p-4"
@@ -457,7 +451,6 @@ const ReviewItem = ({
                 </>
             )}
 
-            {/* Show error message if image failed to load */}
             {review.imageUrl && imageError && !imageLoading && (
                 <div className="mb-6 p-4 bg-red-50 border border-red-200 rounded-lg text-red-700 text-sm">
                     <p><strong>Image Error:</strong> Unable to load image. This could be due to:</p>
