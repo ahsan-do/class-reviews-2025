@@ -1,9 +1,11 @@
 // src/app/components/ReviewItem.js
 "use client";
 import React, { useState, useEffect, useRef } from 'react';
-import { Star, MoreVertical, Bookmark, Flag, Pencil, Trash2 } from 'lucide-react';
+import { Star, MoreVertical, Bookmark, Flag, Pencil, Trash2, Repeat, MessageCircle, Loader2 } from 'lucide-react';
 import Image from 'next/image';
 import { useAppwrite } from '../lib/appwriteContext';
+import { Query } from 'appwrite';
+import RepostModal from './RepostModal';
 
 // Color mapping for categories
 const categoryColors = {
@@ -32,6 +34,12 @@ const ReviewItem = ({
                         handleSaveReview,
                         handleUserSave,
                         handleReportReview,
+                        handleRepost,
+                        isRepost = false,
+                        repostData = null,
+                        onCreateNotification,
+                        isDeleting,
+                        onDeleteRepost,
                     }) => {
     const nickname = review.nickname || `Anonymous_${Math.floor(Math.random() * 100)}`;
     const [isImageEnlarged, setIsImageEnlarged] = useState(false);
@@ -45,6 +53,9 @@ const ReviewItem = ({
     const [avatarUrl, setAvatarUrl] = useState(null);
     const [avatarLoading, setAvatarLoading] = useState(true);
     const [avatarError, setAvatarError] = useState(false);
+    const [showRepostModal, setShowRepostModal] = useState(false);
+    const [repostCount, setRepostCount] = useState(0);
+    const [isDeletingRepost, setIsDeletingRepost] = useState(false);
 
     const categoryColor = categoryColors[editedCategory] || 'bg-gray-200 text-gray-800';
     const menuRef = useRef(null);
@@ -54,6 +65,192 @@ const ReviewItem = ({
     const appwriteDatabases = db || databases;
     const appwriteStorage = st || storage;
     const appwriteClient = client;
+
+    // Ensure reactions is an object with default values
+    const safeReactions = review.reactions || { heart: 0, laugh: 0, surprise: 0, sad: 0, fire: 0 };
+
+    // Fetch repost count
+    useEffect(() => {
+        const fetchRepostCount = async () => {
+            if (!appwriteDatabases || !review.id) return;
+
+            try {
+                const response = await appwriteDatabases.listDocuments(
+                    process.env.NEXT_PUBLIC_APPWRITE_DATABASE_ID,
+                    process.env.NEXT_PUBLIC_APPWRITE_REPOSTS_COLLECTION_ID,
+                    [Query.equal('originalReviewId', review.id)]
+                );
+                setRepostCount(response.documents.length);
+            } catch (err) {
+                console.error('Error fetching repost count:', err);
+            }
+        };
+
+        fetchRepostCount();
+    }, [review.id, appwriteDatabases]);
+
+    const handleReactionWithNotification = async (reviewId, reactionType) => {
+        await handleReaction(reviewId, reactionType);
+
+        if (review.userId !== userId && onCreateNotification) {
+            const user = await account.get();
+            await onCreateNotification({
+                userId: review.userId,
+                nickname: review.nickname,
+                type: 'reaction',
+                fromUserId: userId,
+                reviewId: reviewId,
+                message: `${user.name || user.email.split('@')[0]} reacted to your review with ${reactionType}`,
+                read: false,
+                timestamp: new Date().toISOString(),
+            });
+        }
+    };
+
+    const handleRepostSubmit = async (thoughts, repostId = null) => {
+        try {
+            if (handleRepost && typeof handleRepost === 'function') {
+                await handleRepost(review.id, thoughts, repostId);
+            } else {
+                if (!appwriteDatabases) {
+                    throw new Error('Database not available');
+                }
+
+                if (repostId) {
+                    console.log('Updating existing repost with ID:', repostId);
+                    await appwriteDatabases.updateDocument(
+                        process.env.NEXT_PUBLIC_APPWRITE_DATABASE_ID,
+                        process.env.NEXT_PUBLIC_APPWRITE_REPOSTS_COLLECTION_ID,
+                        repostId,
+                        {
+                            thoughts: thoughts || '',
+                            timestamp: new Date().toISOString(),
+                        }
+                    );
+
+                    if (onCreateNotification && review.userId !== userId && userId) {
+                        const user = await account.get();
+                        const notificationData = {
+                            userId: review.userId,
+                            type: 'repost',
+                            fromUserId: userId,
+                            reviewId: review.id,
+                            message: `${user.name || user.email.split('@')[0]} updated their repost of your review${thoughts ? ' with new thoughts' : ''}`,
+                            read: false,
+                            timestamp: new Date().toISOString(),
+                        };
+
+                        const existingNotifications = await appwriteDatabases.listDocuments(
+                            process.env.NEXT_PUBLIC_APPWRITE_DATABASE_ID,
+                            process.env.NEXT_PUBLIC_APPWRITE_NOTIFICATIONS_COLLECTION_ID,
+                            [Query.equal('reviewId', review.id), Query.equal('fromUserId', userId), Query.equal('type', 'repost')]
+                        );
+
+                        if (existingNotifications.documents.length > 0) {
+                            await appwriteDatabases.updateDocument(
+                                process.env.NEXT_PUBLIC_APPWRITE_DATABASE_ID,
+                                process.env.NEXT_PUBLIC_APPWRITE_NOTIFICATIONS_COLLECTION_ID,
+                                existingNotifications.documents[0].$id,
+                                notificationData
+                            );
+                        } else {
+                            await appwriteDatabases.createDocument(
+                                process.env.NEXT_PUBLIC_APPWRITE_DATABASE_ID,
+                                process.env.NEXT_PUBLIC_APPWRITE_NOTIFICATIONS_COLLECTION_ID,
+                                'unique()',
+                                notificationData
+                            );
+                        }
+                    }
+
+                    console.log('Repost thoughts updated successfully');
+                } else {
+                    console.log('Creating new repost for review ID:', review.id, 'Thoughts:', thoughts);
+                    const repostDoc = {
+                        originalReviewId: review.id,
+                        userId: userId,
+                        authorName: nickname,
+                        thoughts: thoughts || '',
+                        timestamp: new Date().toISOString(),
+                        avatarUrl: review.avatarUrl || 'https://via.placeholder.com/50?text=U',
+                    };
+                    const repostResponse = await appwriteDatabases.createDocument(
+                        process.env.NEXT_PUBLIC_APPWRITE_DATABASE_ID,
+                        process.env.NEXT_PUBLIC_APPWRITE_REPOSTS_COLLECTION_ID,
+                        'unique()',
+                        repostDoc
+                    );
+
+                    if (onCreateNotification && review.userId !== userId && userId) {
+                        const user = await account.get();
+                        const notificationData = {
+                            userId: review.userId,
+                            type: 'repost',
+                            fromUserId: userId,
+                            reviewId: review.id,
+                            message: `${user.name || user.email.split('@')[0]} reposted your review${thoughts ? ' with thoughts' : ''}`,
+                            read: false,
+                            timestamp: new Date().toISOString(),
+                        };
+
+                        await appwriteDatabases.createDocument(
+                            process.env.NEXT_PUBLIC_APPWRITE_DATABASE_ID,
+                            process.env.NEXT_PUBLIC_APPWRITE_NOTIFICATIONS_COLLECTION_ID,
+                            'unique()',
+                            notificationData
+                        );
+                    }
+
+                    setRepostCount(prev => prev + 1);
+                }
+
+                setShowRepostModal(false);
+                fetchReviews();
+            }
+        } catch (err) {
+            console.error('Error handling repost:', err);
+            alert('Failed to handle repost. Please try again.');
+        }
+    };
+
+    const handleRepostClick = () => {
+        if (isRepost && userId === repostData?.userId) {
+            if (window.confirm('Do you want to edit your thoughts or delete this repost?')) {
+                setShowRepostModal(true);
+            } else {
+                handleDeleteRepost();
+            }
+        } else if (userId && userId !== review.userId) {
+            setShowRepostModal(true);
+        } else {
+            alert('You cannot repost your own review.');
+        }
+    };
+
+    const handleDeleteRepost = async () => {
+        if (!appwriteDatabases || !repostData?.id) {
+            console.error('Database or repost ID not available');
+            return;
+        }
+        setIsDeletingRepost(true);
+        try {
+            await appwriteDatabases.deleteDocument(
+                process.env.NEXT_PUBLIC_APPWRITE_DATABASE_ID,
+                process.env.NEXT_PUBLIC_APPWRITE_REPOSTS_COLLECTION_ID,
+                repostData.id
+            );
+            setRepostCount(prev => Math.max(0, prev - 1));
+            if (onDeleteRepost) {
+                onDeleteRepost(repostData.id);
+            }
+            fetchReviews();
+        } catch (err) {
+            console.error('Error deleting repost:', err);
+            alert('Failed to delete repost. Please try again.');
+        } finally {
+            setIsDeletingRepost(false);
+        }
+    };
 
     useEffect(() => {
         setAvatarLoading(true);
@@ -70,10 +267,8 @@ const ReviewItem = ({
                 setSignedImageUrl(null);
                 return;
             }
-
             setImageLoading(true);
             setImageError(false);
-
             try {
                 const urlParts = review.imageUrl.split('/');
                 let fileId = null;
@@ -86,7 +281,6 @@ const ReviewItem = ({
                     setImageLoading(false);
                     return;
                 }
-
                 const bucketId = process.env.NEXT_PUBLIC_APPWRITE_BUCKET_ID;
                 if (!bucketId) {
                     console.error('Bucket ID not found in environment variables');
@@ -94,7 +288,6 @@ const ReviewItem = ({
                     setImageLoading(false);
                     return;
                 }
-
                 try {
                     const fileInfo = await appwriteStorage.getFile(bucketId, fileId);
                 } catch (fileError) {
@@ -103,7 +296,6 @@ const ReviewItem = ({
                     setImageLoading(false);
                     return;
                 }
-
                 try {
                     const preview = appwriteStorage.getFileView(bucketId, fileId);
                     const urlString = preview.href || preview.toString();
@@ -121,7 +313,6 @@ const ReviewItem = ({
                 setImageLoading(false);
             }
         };
-
         generateImageUrl();
     }, [review.imageUrl, appwriteStorage, isLoading]);
 
@@ -140,18 +331,15 @@ const ReviewItem = ({
 
     useEffect(() => {
         if (!appwriteClient || !isMenuOpen || !cardRef.current || !menuRef.current || isLoading) return;
-
         const cardRect = cardRef.current.getBoundingClientRect();
         const menuElement = menuRef.current;
         const menuWidth = menuElement.offsetWidth;
         const viewportWidth = window.innerWidth;
-
-        // Adjust menu position based on screen size
-        if (viewportWidth <= 640) { // Mobile breakpoint (e.g., tailwind's sm:640px)
+        if (viewportWidth <= 640) {
             menuElement.style.position = 'relative';
             menuElement.style.left = '0';
             menuElement.style.right = '0';
-            menuElement.style.top = '100%'; // Open below the header inside the card
+            menuElement.style.top = '100%';
             menuElement.style.transform = 'translateY(4px)';
             menuElement.style.width = '100%';
         } else {
@@ -233,6 +421,23 @@ const ReviewItem = ({
 
     return (
         <div ref={cardRef} className="bg-white rounded-2xl shadow-sm border border-gray-100 p-4 sm:p-8 hover:shadow-md transition-all duration-200 relative mb-6">
+            {isRepost && repostData && (
+                <div className="flex items-center gap-2 mb-4 text-sm text-gray-600 border-b border-gray-100 pb-3">
+                    <Repeat size={16} className="text-green-500" />
+                    <span>
+          <strong>{repostData.authorName}</strong> reposted
+        </span>
+                    <span>â€¢</span>
+                    <span>{new Date(repostData.timestamp).toLocaleDateString()}</span>
+                </div>
+            )}
+
+            {isRepost && repostData?.thoughts && (
+                <div className="mb-4 p-3 bg-blue-50 rounded-lg border-l-4 border-blue-400">
+                    <p className="text-gray-800 italic">"{repostData.thoughts}"</p>
+                </div>
+            )}
+
             <div className="flex flex-col sm:flex-row items-start justify-between mb-4">
                 <div className="flex items-center gap-3 mb-4 sm:mb-0 w-full sm:w-auto">
                     {avatarLoading ? (
@@ -259,33 +464,33 @@ const ReviewItem = ({
                     <div className="flex-1">
                         <p className="font-semibold text-gray-800">{nickname}</p>
                         <div className="flex items-center gap-2 text-sm text-gray-500" suppressHydrationWarning>
-              <span className={`${categoryColor} px-2 py-1 rounded-full text-xs font-medium`}>
-                {isEditing ? (
-                    <select
-                        value={editedCategory}
-                        onChange={(e) => setEditedCategory(e.target.value)}
-                        className={`${categoryColor.replace('text-', 'text-')} px-2 py-1 rounded-full text-xs font-medium`}
-                    >
-                        {Object.keys(categoryColors).map((cat) => (
-                            <option key={cat} value={cat}>
-                                {cat}
-                            </option>
-                        ))}
-                    </select>
-                ) : (
-                    editedCategory
-                )}
-              </span>
-                            <span>•</span>
+            <span className={`${categoryColor} px-2 py-1 rounded-full text-xs font-medium`}>
+              {isEditing ? (
+                  <select
+                      value={editedCategory}
+                      onChange={(e) => setEditedCategory(e.target.value)}
+                      className={`${categoryColor.replace('text-', 'text-')} px-2 py-1 rounded-full text-xs font-medium`}
+                  >
+                      {Object.keys(categoryColors).map((cat) => (
+                          <option key={cat} value={cat}>
+                              {cat}
+                          </option>
+                      ))}
+                  </select>
+              ) : (
+                  editedCategory
+              )}
+            </span>
+                            <span>â€¢</span>
                             <span>{new Date(review.timestamp).toLocaleDateString()}</span>
                         </div>
                     </div>
                 </div>
                 <div className="flex items-center gap-2">
-                    {getTotalReactions(review.reactions) > 0 && (
+                    {getTotalReactions(safeReactions) > 0 && (
                         <div className="flex items-center gap-1">
                             <Star size={16} className="text-yellow-500 fill-current" />
-                            <span className="text-sm font-semibold text-gray-700">{getTotalReactions(review.reactions)}</span>
+                            <span className="text-sm font-semibold text-gray-700">{getTotalReactions(safeReactions)}</span>
                         </div>
                     )}
                     <div className="relative">
@@ -300,7 +505,7 @@ const ReviewItem = ({
                                 ref={menuRef}
                                 className="absolute mt-2 w-32 min-w-[150px] bg-white border border-gray-200 rounded-md shadow-lg z-30 origin-top-right"
                             >
-                                {userId === review.authorId && (
+                                {userId === review.userId && (
                                     <>
                                         <button
                                             onClick={() => {
@@ -314,8 +519,18 @@ const ReviewItem = ({
                                         <button
                                             onClick={handleDelete}
                                             className="w-full text-left px-4 py-2 text-red-500 hover:bg-gray-100 flex items-center gap-2"
+                                            disabled={isDeleting}
                                         >
-                                            <Trash2 size={16} /> Delete
+                                            {isDeleting ? (
+                                                <>
+                                                    <Loader2 size={16} className="animate-spin" />
+                                                    Deleting...
+                                                </>
+                                            ) : (
+                                                <>
+                                                    <Trash2 size={16} /> Delete
+                                                </>
+                                            )}
                                         </button>
                                         <button
                                             onClick={() => {
@@ -328,8 +543,40 @@ const ReviewItem = ({
                                         </button>
                                     </>
                                 )}
-                                {userId && userId !== review.authorId && (
+                                {isRepost && userId === repostData?.userId && (
                                     <>
+                                        <button
+                                            onClick={() => setShowRepostModal(true)}
+                                            className="w-full text-left px-4 py-2 text-blue-500 hover:bg-gray-100 flex items-center gap-2"
+                                        >
+                                            <Pencil size={16} /> Edit Thoughts
+                                        </button>
+                                        <button
+                                            onClick={handleDeleteRepost}
+                                            className="w-full text-left px-4 py-2 text-red-500 hover:bg-gray-100 flex items-center gap-2"
+                                            disabled={isDeletingRepost}
+                                        >
+                                            {isDeletingRepost ? (
+                                                <>
+                                                    <Loader2 size={16} className="animate-spin" />
+                                                    Deleting...
+                                                </>
+                                            ) : (
+                                                <>
+                                                    <Trash2 size={16} /> Delete Repost
+                                                </>
+                                            )}
+                                        </button>
+                                    </>
+                                )}
+                                {userId && userId !== review.userId && !isRepost && (
+                                    <>
+                                        <button
+                                            onClick={handleRepostClick}
+                                            className="w-full text-left px-4 py-2 text-green-500 hover:bg-gray-100 flex items-center gap-2"
+                                        >
+                                            <Repeat size={16} /> Repost
+                                        </button>
                                         <button
                                             onClick={() => {
                                                 handleUserSave(review.id);
@@ -355,14 +602,15 @@ const ReviewItem = ({
                     </div>
                 </div>
             </div>
+
             {isEditing ? (
                 <form onSubmit={handleUpdate} className="mb-6">
-          <textarea
-              value={editedContent}
-              onChange={(e) => setEditedContent(e.target.value)}
-              className="w-full p-2 border border-gray-300 rounded-md mb-2 text-gray-800 leading-relaxed text-base sm:text-lg"
-              rows="4"
-          />
+        <textarea
+            value={editedContent}
+            onChange={(e) => setEditedContent(e.target.value)}
+            className="w-full p-2 border border-gray-300 rounded-md mb-2 text-gray-800 leading-relaxed text-base sm:text-lg"
+            rows="4"
+        />
                     <button
                         type="submit"
                         className="bg-blue-500 text-white px-4 py-2 rounded-md hover:bg-blue-600"
@@ -394,7 +642,6 @@ const ReviewItem = ({
                             <p className="text-gray-600 text-sm mt-2">Loading image...</p>
                         </div>
                     )}
-
                     {!imageError && signedImageUrl && !imageLoading && (
                         <div className="mb-6">
                             <Image
@@ -425,7 +672,6 @@ const ReviewItem = ({
                             />
                         </div>
                     )}
-
                     {isImageEnlarged && signedImageUrl && (
                         <div
                             className="fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center z-50 p-4"
@@ -443,47 +689,54 @@ const ReviewItem = ({
                                     className="absolute top-4 right-4 text-white text-3xl font-bold hover:text-gray-300 bg-black bg-opacity-50 rounded-full w-10 h-10 flex items-center justify-center"
                                     onClick={() => setIsImageEnlarged(false)}
                                 >
-                                    ×
+                                    Ã—
                                 </button>
                             </div>
                         </div>
                     )}
                 </>
             )}
-
             {review.imageUrl && imageError && !imageLoading && (
                 <div className="mb-6 p-4 bg-red-50 border border-red-200 rounded-lg text-red-700 text-sm">
-                    <p><strong>Image Error:</strong> Unable to load image. This could be due to:</p>
-                    <ul className="list-disc list-inside mt-2 space-y-1">
-                        <li>File permissions issues</li>
-                        <li>Invalid file ID</li>
-                        <li>File was deleted</li>
-                        <li>Network connectivity problems</li>
-                    </ul>
-                    <p className="mt-2 text-xs text-gray-600">Original URL: {review.imageUrl}</p>
+                    <p><strong>Image Error:</strong> Unable to load image.</p>
                 </div>
             )}
 
-            <div className="flex flex-wrap items-center gap-2 pt-4 border-t border-gray-100 sm:gap-4">
-                {Object.entries(reactionIcons).map(([key, { icon: Icon, label, color }]) => (
-                    <button
-                        key={key}
-                        onClick={() => {
-                            console.log('Attempting to react:', { key, reviewId: review.id });
-                            handleReaction(review.id, key);
-                        }}
-                        className={`flex items-center gap-1 px-2 py-1 rounded-full hover:bg-gray-50 transition-all duration-200 group sm:px-3 sm:py-2 text-sm sm:text-base whitespace-nowrap overflow-hidden text-ellipsis max-w-full`}
-                        title={label}
-                    >
-                        <Icon size={16} className={`${color} group-hover:scale-110 transition-transform`} />
-                        {review.reactions[key] > 0 && (
-                            <span className="text-sm font-semibold text-gray-700">
-                {review.reactions[key]}
+            <div className="flex flex-wrap items-center justify-between gap-2 pt-4 border-t border-gray-100">
+                <div className="flex flex-wrap items-center gap-2 sm:gap-4">
+                    {Object.entries(reactionIcons).map(([key, { icon: Icon, label, color }]) => (
+                        <button
+                            key={key}
+                            onClick={() => handleReactionWithNotification(review.id, key)}
+                            className={`flex items-center gap-1 px-2 py-1 rounded-full hover:bg-gray-50 transition-all duration-200 group sm:px-3 sm:py-2 text-sm sm:text-base whitespace-nowrap overflow-hidden text-ellipsis max-w-full`}
+                            title={label}
+                        >
+                            <Icon size={16} className={`${color} group-hover:scale-110 transition-transform`} />
+                            {safeReactions[key] > 0 && (
+                                <span className="text-sm font-semibold text-gray-700">
+                {safeReactions[key]}
               </span>
-                        )}
-                    </button>
-                ))}
+                            )}
+                        </button>
+                    ))}
+                </div>
+                {repostCount > 0 && (
+                    <div className="flex items-center gap-1 text-gray-500">
+                        <Repeat size={16} />
+                        <span className="text-sm">{repostCount}</span>
+                    </div>
+                )}
             </div>
+
+            <RepostModal
+                isOpen={showRepostModal}
+                onClose={() => setShowRepostModal(false)}
+                onSubmit={handleRepostSubmit}
+                reviewContent={review.content}
+                reviewAuthor={nickname}
+                initialThoughts={isRepost && userId === repostData?.userId ? repostData.thoughts : ''}
+                repostId={isRepost && userId === repostData?.userId ? repostData.id : null}
+            />
         </div>
     );
 };
