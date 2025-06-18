@@ -123,15 +123,24 @@ export default function Home() {
           );
 
           setReposts(
-              repostsResponse.documents.map((doc) => ({
-                id: doc.$id,
-                originalReviewId: doc.originalReviewId,
-                userId: doc.userId,
-                authorName: doc.nickname,
-                thoughts: doc.thoughts,
-                timestamp: new Date(doc.$createdAt),
-                avatarUrl: doc.avatarUrl || 'https://via.placeholder.com/50?text=U',
-              }))
+              repostsResponse.documents.map((doc) => {
+                const timestamp = new Date(doc.$createdAt);
+                console.log('Repost fetched:', { id: doc.$id, rawTimestamp: doc.$createdAt, convertedTimestamp: timestamp });
+                return {
+                  id: doc.$id,
+                  originalReviewId: doc.originalReviewId,
+                  userId: doc.userId,
+                  thoughts: doc.thoughts,
+                  timestamp: timestamp,
+                  avatarUrl: doc.avatarUrl || 'https://via.placeholder.com/50?text=U',
+                  content: doc.content,
+                  category: doc.category,
+                  nickname: doc.nickname || `Anonymous_${Math.floor(Math.random() * 100)}`,
+                  imageUrl: doc.imageUrl,
+                  reactions: JSON.parse(doc.reactions || '{}') || { heart: 0, laugh: 0, surprise: 0, sad: 0, fire: 0 },
+                  userReactions: JSON.parse(doc.userReactions || '{}') || {},
+                };
+              })
           );
 
           setError(null);
@@ -315,7 +324,6 @@ export default function Home() {
         setReposts(prev => prev.map(r =>
             r.id === repostId ? { ...r, thoughts: thoughts.trim(), timestamp: new Date().toISOString() } : r
         ));
-        console.log('Repost thoughts updated successfully');
       } else {
         // Create new repost
         console.log('Creating new repost for review ID:', reviewId, 'Thoughts:', thoughts);
@@ -324,8 +332,15 @@ export default function Home() {
           userId: userId,
           authorName: user.name || user.email.split('@')[0],
           thoughts: thoughts.trim(),
-          timestamp: new Date().toISOString(),
-          avatarUrl: user.prefs?.avatar || 'https://via.placeholder.com/50?text=U',
+          timestamp: new Date().toISOString(), // Repost creation time
+          originalTimestamp: review.timestamp, // Preserve original review timestamp
+          avatarUrl: review.avatarUrl || 'https://via.placeholder.com/50?text=U',
+          content: review.content,
+          category: review.category,
+          nickname: review.nickname || `Anonymous_${Math.floor(Math.random() * 100)}`,
+          imageUrl: review.imageUrl,
+          reactions: JSON.stringify({ heart: 0, laugh: 0, surprise: 0, sad: 0, fire: 0 }),
+          userReactions: JSON.stringify({}),
         };
 
         const repostResponse = await databases.createDocument(
@@ -362,16 +377,14 @@ export default function Home() {
           );
         }
 
-        // Update local state
-        setReposts(prev => [
-          {
-            id: repostResponse.$id,
-            ...repostData,
-            timestamp: new Date(repostData.timestamp),
-          },
-          ...prev
-        ]);
-
+        // Update local state with the new repost
+        const newRepost = {
+          id: repostResponse.$id,
+          ...repostData,
+          reactions: JSON.parse(repostData.reactions),
+          userReactions: JSON.parse(repostData.userReactions),
+        };
+        setReposts(prev => [newRepost, ...prev.filter(r => r.id !== newRepost.id)]);
         setReviews(prev =>
             prev.map(r =>
                 r.id === reviewId
@@ -381,6 +394,7 @@ export default function Home() {
         );
       }
 
+      setReposts(prev => [...prev].sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp)));
       setError('Review repost handled successfully!');
     } catch (err) {
       console.error('Error reposting review:', err);
@@ -395,7 +409,7 @@ export default function Home() {
     }
 
     const { databases } = appwrite;
-    const review = reviews.find((r) => r.id === reviewId);
+    const review = reviews.find((r) => r.id === reviewId) || reposts.find((r) => r.id === reviewId);
     const userReactions = review.userReactions;
     const userReactionCount = Object.keys(userReactions).filter((uid) => uid === userId).length;
 
@@ -447,13 +461,23 @@ export default function Home() {
     }
 
     try {
+      const isRepost = reposts.find((r) => r.id === reviewId);
+      const collectionId = isRepost
+          ? process.env.NEXT_PUBLIC_APPWRITE_REPOSTS_COLLECTION_ID
+          : process.env.NEXT_PUBLIC_APPWRITE_COLLECTION_ID;
+
       await databases.updateDocument(
           process.env.NEXT_PUBLIC_APPWRITE_DATABASE_ID,
-          process.env.NEXT_PUBLIC_APPWRITE_COLLECTION_ID,
+          collectionId,
           reviewId,
           updates
       );
-      await fetchReviews();
+      const updatedReview = { ...review, reactions: JSON.parse(updates[`reaction`]), userReactions: JSON.parse(updates[`userReactions`]) };
+      if (isRepost) {
+        setReposts(prev => prev.map(r => r.id === reviewId ? updatedReview : r).sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp)));
+      } else {
+        setReviews(prev => prev.map(r => r.id === reviewId ? updatedReview : r));
+      }
     } catch (err) {
       console.error('Error updating reaction:', err);
       setError('Failed to add reaction. Please try again.');
@@ -494,15 +518,26 @@ export default function Home() {
           }))
       );
       setReposts(
-          repostsResponse.documents.map((doc) => ({
-            id: doc.$id,
-            originalReviewId: doc.originalReviewId,
-            userId: doc.userId,
-            authorName: doc.nickname,
-            thoughts: doc.thoughts,
-            timestamp: new Date(doc.$createdAt),
-            avatarUrl: doc.avatarUrl || 'https://via.placeholder.com/50?text=U',
-          }))
+          repostsResponse.documents.map((doc) => {
+            const timestamp = new Date(doc.$createdAt);
+            console.log('Repost fetched:', { id: doc.$id, rawTimestamp: doc.$createdAt, convertedTimestamp: timestamp });
+            return {
+              id: doc.$id,
+              originalReviewId: doc.originalReviewId,
+              userId: doc.userId,
+              authorName: doc.nickname,
+              thoughts: doc.thoughts,
+              timestamp: timestamp,
+              originalTimestamp: new Date(doc.$createdAt), // Ensure originalTimestamp is set
+              avatarUrl: doc.avatarUrl || 'https://via.placeholder.com/50?text=U',
+              content: doc.content,
+              category: doc.category,
+              nickname: doc.nickname || `Anonymous_${Math.floor(Math.random() * 100)}`,
+              imageUrl: doc.imageUrl,
+              reactions: JSON.parse(doc.reactions || '{}') || { heart: 0, laugh: 0, surprise: 0, sad: 0, fire: 0 },
+              userReactions: JSON.parse(doc.userReactions || '{}') || {},
+            };
+          })
       );
       setError(null);
     } catch (err) {
@@ -549,6 +584,33 @@ export default function Home() {
     } catch (err) {
       console.error('Error deleting review:', err);
       setError('Failed to delete review. Please try again.');
+    } finally {
+      setIsDeleting(false);
+    }
+  };
+
+  const handleDeleteRepost = async (repostId) => {
+    if (!appwrite || !userId) {
+      setError('Appwrite client or user not initialized.');
+      return;
+    }
+    const repost = reposts.find((r) => r.id === repostId);
+    if (repost.userId !== userId) {
+      setError('You can only delete your own reposts.');
+      return;
+    }
+    setIsDeleting(true);
+    try {
+      await appwrite.databases.deleteDocument(
+          process.env.NEXT_PUBLIC_APPWRITE_DATABASE_ID,
+          process.env.NEXT_PUBLIC_APPWRITE_REPOSTS_COLLECTION_ID,
+          repostId
+      );
+      setReposts(reposts.filter((r) => r.id !== repostId));
+      setError(null);
+    } catch (err) {
+      console.error('Error deleting repost:', err);
+      setError('Failed to delete repost. Please try again.');
     } finally {
       setIsDeleting(false);
     }
@@ -620,23 +682,33 @@ export default function Home() {
     }
   };
 
-  const handleDeleteRepost = (repostId) => {
-    setReposts(prev => prev.filter(r => r.id !== repostId));
-    fetchReviews();
-  };
-
   const getFilteredAndSortedReviews = () => {
-    let filtered = filter === 'All' ? reviews : reviews.filter((review) => review.category === filter);
+    let filteredReviews = filter === 'All' ? [...reviews] : reviews.filter((item) => item.category === filter);
+    let filteredReposts = filter === 'All' ? [...reposts] : reposts.filter((item) => item.category === filter);
+
     if (sortBy === 'Popular') {
-      filtered = filtered.sort((a, b) => {
+      filteredReviews = filteredReviews.sort((a, b) => {
+        const aTotal = getTotalReactions(a.reactions);
+        const bTotal = getTotalReactions(b.reactions);
+        return bTotal - aTotal;
+      });
+      filteredReposts = filteredReposts.sort((a, b) => {
         const aTotal = getTotalReactions(a.reactions);
         const bTotal = getTotalReactions(b.reactions);
         return bTotal - aTotal;
       });
     } else {
-      filtered = filtered.sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
+      filteredReviews = filteredReviews.sort((a, b) => {
+        console.log('Sorting reviews:', { aId: a.id, aTimestamp: a.timestamp, bId: b.id, bTimestamp: b.timestamp });
+        return new Date(b.timestamp) - new Date(a.timestamp);
+      });
+      filteredReposts = filteredReposts.sort((a, b) => {
+        console.log('Sorting reposts:', { aId: a.id, aTimestamp: a.timestamp, bId: b.id, bTimestamp: b.timestamp });
+        return new Date(b.timestamp) - new Date(a.timestamp);
+      });
     }
-    return filtered;
+
+    return { filteredReviews, filteredReposts };
   };
 
   useEffect(() => {
@@ -655,6 +727,8 @@ export default function Home() {
         </div>
     );
   }
+
+  const { filteredReviews, filteredReposts } = getFilteredAndSortedReviews();
 
   return (
       <div className="min-h-screen bg-gradient-to-br from-indigo-50 via-white to-purple-50">
@@ -684,8 +758,8 @@ export default function Home() {
           />
           <Filters filter={filter} setFilter={setFilter} sortBy={sortBy} setSortBy={setSortBy} />
           <ReviewList
-              reviews={getFilteredAndSortedReviews()}
-              reposts={reposts}
+              reviews={filteredReviews}
+              reposts={filteredReposts}
               reactionIcons={reactionIcons}
               handleReaction={handleReaction}
               handleRepost={handleRepost}
@@ -703,7 +777,7 @@ export default function Home() {
               isDeleting={isDeleting}
               onDeleteRepost={handleDeleteRepost}
           />
-          {getFilteredAndSortedReviews().length === 0 && !isInitializing && (
+          {filteredReviews.length === 0 && filteredReposts.length === 0 && !isInitializing && (
               <div className="text-center py-16">
                 <div className="w-16 h-16 bg-gray-100 rounded-full flex items-center justify-center mx-auto mb-4">
                   <Filter size={24} className="text-gray-400" />

@@ -18,14 +18,20 @@ const ReviewList = ({
                         handleUserSave,
                         handleReportReview,
                         isDeleting,
-                        onDeleteRepost, // Receive callback from parent
+                        onDeleteRepost,
                     }) => {
+    // Combine and sort all items
+    const allItems = [
+        ...reviews.map(review => ({ ...review, isRepost: false })),
+        ...reposts.map(repost => ({ ...repost, isRepost: true })),
+    ].sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
+
     return (
         <div className="space-y-6">
-            {reviews.map((review) => (
+            {allItems.map((item) => (
                 <ReviewItem
-                    key={review.id}
-                    review={review}
+                    key={item.id}
+                    review={item}
                     reactionIcons={reactionIcons}
                     handleReaction={handleReaction}
                     handleRepost={handleRepost}
@@ -40,32 +46,10 @@ const ReviewList = ({
                     handleSaveReview={handleSaveReview}
                     handleUserSave={handleUserSave}
                     handleReportReview={handleReportReview}
+                    isRepost={item.isRepost}
+                    repostData={item.isRepost ? item : null}
                     isDeleting={isDeleting}
-                    onDeleteRepost={onDeleteRepost} // Pass to ReviewItem
-                />
-            ))}
-            {reposts.map((repost) => (
-                <ReviewItem
-                    key={repost.id}
-                    review={reviews.find(r => r.id === repost.originalReviewId) || {}}
-                    reactionIcons={reactionIcons}
-                    handleReaction={handleReaction}
-                    handleRepost={handleRepost}
-                    getTotalReactions={getTotalReactions}
-                    getTopReaction={getTopReaction}
-                    fetchReviews={fetchReviews}
-                    databases={databases}
-                    storage={storage}
-                    userId={userId}
-                    handleEditReview={handleEditReview}
-                    handleDeleteReview={handleDeleteReview}
-                    handleSaveReview={handleSaveReview}
-                    handleUserSave={handleUserSave}
-                    handleReportReview={handleReportReview}
-                    isRepost={true}
-                    repostData={repost}
-                    isDeleting={isDeleting}
-                    onDeleteRepost={onDeleteRepost} // Pass to ReviewItem
+                    onDeleteRepost={onDeleteRepost}
                 />
             ))}
         </div>
