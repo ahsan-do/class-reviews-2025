@@ -154,11 +154,10 @@ const NotificationSystem = ({ userId }) => {
     useEffect(() => {
         fetchNotifications();
 
-        // Set up polling for new notifications
         const interval = setInterval(fetchNotifications, 30000); // Poll every 30 seconds
 
         return () => clearInterval(interval);
-    }, [userId, databases]);
+    }, [userId, databases, fetchNotifications]); // Added fetchNotifications
 
     return (
         <div className="relative">

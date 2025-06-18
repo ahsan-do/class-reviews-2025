@@ -342,7 +342,7 @@ const ReviewItem = ({
 
             {isRepost && repostData?.thoughts && (
                 <div className="mb-4 p-3 bg-blue-50 rounded-lg border-l-4 border-blue-400">
-                    <p className="text-gray-800 italic">"{repostData.thoughts}"</p>
+                    <p className="text-gray-800 italic">{'"'}{repostData.thoughts}{'"'}</p>
                 </div>
             )}
 
