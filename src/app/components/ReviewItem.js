@@ -39,6 +39,9 @@ const ReviewItem = ({
                         isDeleting,
                         onDeleteRepost,
                     }) => {
+    // Debug log to check props
+    console.log('ReviewItem props:', { userId, reviewId: review.id, isRepost, repostData });
+
     // Use repostData.authorName for reposter's name in the repost header
     const reposterName = isRepost && repostData?.authorName ? repostData.authorName : null;
     // Use review.nickname for the original reviewer's name
@@ -120,7 +123,7 @@ const ReviewItem = ({
                     const repostDoc = {
                         originalReviewId: review.id,
                         userId: userId,
-                        authorName: originalNickname, // Use original reviewer's nickname for consistency
+                        authorName: user.name || user.email.split('@')[0], // Reposter's name
                         thoughts: thoughts || '',
                         timestamp: new Date().toISOString(),
                         originalTimestamp: review.timestamp,
@@ -483,17 +486,19 @@ const ReviewItem = ({
                                         </button>
                                     </>
                                 )}
-                                {userId && userId !== review.userId && !isRepost && (
+                                {userId && (
                                     <>
-                                        <button
-                                            onClick={() => {
-                                                handleRepostClick();
-                                                setIsMenuOpen(false);
-                                            }}
-                                            className="w-full text-left px-4 py-2 text-green-500 hover:bg-gray-100 flex items-center gap-2"
-                                        >
-                                            <Repeat size={16} /> Repost
-                                        </button>
+                                        {!isRepost && userId !== review.userId && (
+                                            <button
+                                                onClick={() => {
+                                                    handleRepostClick();
+                                                    setIsMenuOpen(false);
+                                                }}
+                                                className="w-full text-left px-4 py-2 text-green-500 hover:bg-gray-100 flex items-center gap-2"
+                                            >
+                                                <Repeat size={16} /> Repost
+                                            </button>
+                                        )}
                                         <button
                                             onClick={() => {
                                                 handleUserSave(review.id);
@@ -503,27 +508,18 @@ const ReviewItem = ({
                                         >
                                             <Bookmark size={16} /> Save Review
                                         </button>
-                                        <button
-                                            onClick={() => {
-                                                handleReportReview(review.id);
-                                                setIsMenuOpen(false);
-                                            }}
-                                            className="w-full text-left px-4 py-2 text-red-500 hover:bg-gray-100 flex items-center gap-2"
-                                        >
-                                            <Flag size={16} /> Report
-                                        </button>
+                                        {(userId !== review.userId && (!isRepost || userId !== repostData?.userId)) && (
+                                            <button
+                                                onClick={() => {
+                                                    handleReportReview(review.id);
+                                                    setIsMenuOpen(false);
+                                                }}
+                                                className="w-full text-left px-4 py-2 text-red-500 hover:bg-gray-100 flex items-center gap-2"
+                                            >
+                                                <Flag size={16} /> Report
+                                            </button>
+                                        )}
                                     </>
-                                )}
-                                {userId && isRepost && userId !== review.userId && (
-                                    <button
-                                        onClick={() => {
-                                            handleReportReview(review.id);
-                                            setIsMenuOpen(false);
-                                        }}
-                                        className="w-full text-left px-4 py-2 text-red-500 hover:bg-gray-100 flex items-center gap-2"
-                                    >
-                                        <Flag size={16} /> Report
-                                    </button>
                                 )}
                             </div>
                         )}
