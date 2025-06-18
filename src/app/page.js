@@ -124,13 +124,15 @@ export default function Home() {
           setReposts(
               repostsResponse.documents.map((doc) => {
                 const timestamp = new Date(doc.$createdAt);
-                console.log('Repost fetched:', { id: doc.$id, rawTimestamp: doc.$createdAt, convertedTimestamp: timestamp });
+                const originalReview = reviews.find((r) => r.id === doc.originalReviewId);
                 return {
                   id: doc.$id,
                   originalReviewId: doc.originalReviewId,
                   userId: doc.userId,
+                  authorName: doc.authorName || (doc.userId === userId ? user.name || user.email.split('@')[0] : doc.nickname), // Use reposter's name
                   thoughts: doc.thoughts,
                   timestamp: timestamp,
+                  originalTimestamp: originalReview ? originalReview.timestamp : new Date(doc.originalTimestamp || doc.$createdAt),
                   avatarUrl: doc.avatarUrl || 'https://via.placeholder.com/50?text=U',
                   content: doc.content,
                   category: doc.category,
@@ -158,7 +160,7 @@ export default function Home() {
     return () => {
       isMounted = false;
     };
-  }, [router]);
+  }, [router, userId]);
 
   const handleSubmitReview = async (e) => {
     e.preventDefault();
@@ -344,14 +346,14 @@ export default function Home() {
         const repostData = {
           originalReviewId: reviewId,
           userId: userId,
-          authorName: user.name || user.email.split('@')[0],
+          authorName: user.name || user.email.split('@')[0], // Reposter's name
           thoughts: thoughts.trim(),
           timestamp: new Date().toISOString(),
           originalTimestamp: review.timestamp,
           avatarUrl: review.avatarUrl || 'https://via.placeholder.com/50?text=U',
           content: review.content,
           category: review.category,
-          nickname: review.nickname || `Anonymous_${Math.floor(Math.random() * 100)}`,
+          nickname: review.nickname, // Preserve original reviewer's nickname
           imageUrl: review.imageUrl,
           reactions: JSON.stringify({ heart: 0, laugh: 0, surprise: 0, sad: 0, fire: 0 }),
           userReactions: JSON.stringify({}),
@@ -409,7 +411,7 @@ export default function Home() {
       }
 
       setReposts(prev => [...prev].sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp)));
-      setSuccess('Reposted successfully!'); // Set success message
+      setSuccess('Reposted successfully!');
     } catch (err) {
       console.error('Error reposting review:', err);
       setError('Failed to repost review. Please try again.');
@@ -535,14 +537,15 @@ export default function Home() {
           repostsResponse.documents.map((doc) => {
             const timestamp = new Date(doc.$createdAt);
             console.log('Repost fetched:', { id: doc.$id, rawTimestamp: doc.$createdAt, convertedTimestamp: timestamp });
+            const originalReview = reviews.find((r) => r.id === doc.originalReviewId);
             return {
               id: doc.$id,
               originalReviewId: doc.originalReviewId,
               userId: doc.userId,
-              authorName: doc.nickname,
+              authorName: doc.authorName || (doc.userId === userId ? user.name || user.email.split('@')[0] : doc.nickname), // Use reposter's name
               thoughts: doc.thoughts,
               timestamp: timestamp,
-              originalTimestamp: new Date(doc.$createdAt),
+              originalTimestamp: originalReview ? originalReview.timestamp : new Date(doc.originalTimestamp || doc.$createdAt),
               avatarUrl: doc.avatarUrl || 'https://via.placeholder.com/50?text=U',
               content: doc.content,
               category: doc.category,

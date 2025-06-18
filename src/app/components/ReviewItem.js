@@ -39,7 +39,10 @@ const ReviewItem = ({
                         isDeleting,
                         onDeleteRepost,
                     }) => {
-    const nickname = review.nickname || `Anonymous_${Math.floor(Math.random() * 100)}`;
+    // Use repostData.authorName for reposter's name in the repost header
+    const reposterName = isRepost && repostData?.authorName ? repostData.authorName : null;
+    // Use review.nickname for the original reviewer's name
+    const originalNickname = review.nickname || `Anonymous_${Math.floor(Math.random() * 100)}`;
     const [isImageEnlarged, setIsImageEnlarged] = useState(false);
     const [isEditing, setIsEditing] = useState(false);
     const [editedContent, setEditedContent] = useState(review.content);
@@ -117,10 +120,10 @@ const ReviewItem = ({
                     const repostDoc = {
                         originalReviewId: review.id,
                         userId: userId,
-                        authorName: nickname,
+                        authorName: originalNickname, // Use original reviewer's nickname for consistency
                         thoughts: thoughts || '',
                         timestamp: new Date().toISOString(),
-                        originalTimestamp: review.timestamp, // Preserve original timestamp
+                        originalTimestamp: review.timestamp,
                         avatarUrl: review.avatarUrl || 'https://via.placeholder.com/50?text=U',
                         content: review.content,
                         category: review.category,
@@ -163,11 +166,11 @@ const ReviewItem = ({
     useEffect(() => {
         setAvatarLoading(true);
         setAvatarError(false);
-        const avatar = review.avatarUrl || 'https://via.placeholder.com/50?text=U';
+        const avatar = isRepost && repostData?.avatarUrl ? repostData.avatarUrl : (review.avatarUrl || 'https://via.placeholder.com/50?text=U');
         setAvatarUrl(avatar);
         setAvatarLoading(false);
-        console.log('Using avatar URL from review:', avatar);
-    }, [review]);
+        console.log('Using avatar URL from:', isRepost ? 'repostData' : 'review', avatar);
+    }, [review, repostData, isRepost]);
 
     useEffect(() => {
         const generateImageUrl = async () => {
@@ -333,7 +336,7 @@ const ReviewItem = ({
                 <div className="flex items-center gap-2 mb-4 text-sm text-gray-600 border-b border-gray-100 pb-3">
                     <Repeat size={16} className="text-green-500" />
                     <span>
-            <strong>{repostData.authorName || nickname}</strong> reposted
+            <strong>{reposterName}</strong> reposted
           </span>
                     <span>•</span>
                     <span>{new Date(repostData.timestamp).toLocaleDateString()}</span>
@@ -354,12 +357,12 @@ const ReviewItem = ({
                         </div>
                     ) : avatarError || !avatarUrl ? (
                         <div className="w-10 h-10 bg-gradient-to-r from-indigo-400 to-purple-400 rounded-full flex items-center justify-center text-white font-bold">
-                            {nickname.charAt(0).toUpperCase()}
+                            {originalNickname.charAt(0).toUpperCase()}
                         </div>
                     ) : (
                         <Image
                             src={avatarUrl}
-                            alt={`${nickname}'s avatar`}
+                            alt={`${originalNickname}'s avatar`}
                             width={40}
                             height={40}
                             className="rounded-full object-cover"
@@ -370,7 +373,7 @@ const ReviewItem = ({
                         />
                     )}
                     <div className="flex-1">
-                        <p className="font-semibold text-gray-800">{nickname}</p>
+                        <p className="font-semibold text-gray-800">{originalNickname}</p>
                         <div className="flex items-center gap-2 text-sm text-gray-500" suppressHydrationWarning>
               <span className={`${categoryColor} px-2 py-1 rounded-full text-xs font-medium`}>
                 {isEditing ? (
@@ -658,7 +661,7 @@ const ReviewItem = ({
                 onClose={() => setShowRepostModal(false)}
                 onSubmit={handleRepostSubmit}
                 reviewContent={review.content}
-                reviewAuthor={nickname}
+                reviewAuthor={originalNickname}
                 initialThoughts={isRepost && userId === repostData?.userId ? repostData.thoughts : ''}
                 repostId={isRepost && userId === repostData?.userId ? repostData.id : null}
             />

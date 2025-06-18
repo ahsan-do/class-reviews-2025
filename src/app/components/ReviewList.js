@@ -23,7 +23,14 @@ const ReviewList = ({
     // Combine and sort all items
     const allItems = [
         ...reviews.map(review => ({ ...review, isRepost: false })),
-        ...reposts.map(repost => ({ ...repost, isRepost: true })),
+        ...reposts.map(repost => {
+            const originalReview = reviews.find(r => r.id === repost.originalReviewId);
+            return {
+                ...repost,
+                isRepost: true,
+                originalReview: originalReview || repost, // Fallback to repost data if original not found
+            };
+        }),
     ].sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
 
     return (
@@ -31,7 +38,7 @@ const ReviewList = ({
             {allItems.map((item) => (
                 <ReviewItem
                     key={item.id}
-                    review={item}
+                    review={item.isRepost ? item.originalReview : item}
                     reactionIcons={reactionIcons}
                     handleReaction={handleReaction}
                     handleRepost={handleRepost}
