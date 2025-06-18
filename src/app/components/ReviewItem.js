@@ -1,6 +1,6 @@
 "use client";
 import React, { useState, useEffect, useRef } from 'react';
-import { Star, MoreVertical, Flag, Pencil, Trash2, Repeat, Loader2 } from 'lucide-react';
+import { Star, MoreVertical, Flag, Pencil, Trash2, Repeat, Loader2, Bookmark } from 'lucide-react';
 import Image from 'next/image';
 import { useAppwrite } from '../lib/appwriteContext';
 import { Query } from 'appwrite';
@@ -30,8 +30,10 @@ const ReviewItem = ({
                         userId,
                         handleEditReview,
                         handleDeleteReview,
+                        handleSaveReview,
                         handleReportReview,
                         handleRepost,
+                        handleUserSave,
                         isRepost = false,
                         repostData = null,
                         isDeleting,
@@ -438,38 +440,78 @@ const ReviewItem = ({
                                                 </>
                                             )}
                                         </button>
+                                        <button
+                                            onClick={() => {
+                                                handleSaveReview(review.id);
+                                                setIsMenuOpen(false);
+                                            }}
+                                            className="w-full text-left px-4 py-2 text-green-500 hover:bg-gray-100 flex items-center gap-2"
+                                        >
+                                            <Bookmark size={16} /> Save Draft
+                                        </button>
                                     </>
                                 )}
                                 {isRepost && userId === repostData?.userId && (
-                                    <button
-                                        onClick={() => onDeleteRepost(repostData.id)}
-                                        className="w-full text-left px-4 py-2 text-red-500 hover:bg-gray-100 flex items-center gap-2"
-                                        disabled={isDeletingRepost}
-                                    >
-                                        {isDeletingRepost ? (
-                                            <>
-                                                <Loader2 size={16} className="animate-spin" />
-                                                Deleting...
-                                            </>
-                                        ) : (
-                                            <>
-                                                <Trash2 size={16} /> Delete Repost
-                                            </>
-                                        )}
-                                    </button>
+                                    <>
+                                        <button
+                                            onClick={() => {
+                                                setShowRepostModal(true);
+                                                setIsMenuOpen(false);
+                                            }}
+                                            className="w-full text-left px-4 py-2 text-blue-500 hover:bg-gray-100 flex items-center gap-2"
+                                        >
+                                            <Pencil size={16} /> Edit
+                                        </button>
+                                        <button
+                                            onClick={() => onDeleteRepost(repostData.id)}
+                                            className="w-full text-left px-4 py-2 text-red-500 hover:bg-gray-100 flex items-center gap-2"
+                                            disabled={isDeletingRepost}
+                                        >
+                                            {isDeletingRepost ? (
+                                                <>
+                                                    <Loader2 size={16} className="animate-spin" />
+                                                    Deleting...
+                                                </>
+                                            ) : (
+                                                <>
+                                                    <Trash2 size={16} /> Delete
+                                                </>
+                                            )}
+                                        </button>
+                                    </>
                                 )}
                                 {userId && userId !== review.userId && !isRepost && (
-                                    <button
-                                        onClick={() => {
-                                            handleRepostClick();
-                                            setIsMenuOpen(false);
-                                        }}
-                                        className="w-full text-left px-4 py-2 text-green-500 hover:bg-gray-100 flex items-center gap-2"
-                                    >
-                                        <Repeat size={16} /> Repost
-                                    </button>
+                                    <>
+                                        <button
+                                            onClick={() => {
+                                                handleRepostClick();
+                                                setIsMenuOpen(false);
+                                            }}
+                                            className="w-full text-left px-4 py-2 text-green-500 hover:bg-gray-100 flex items-center gap-2"
+                                        >
+                                            <Repeat size={16} /> Repost
+                                        </button>
+                                        <button
+                                            onClick={() => {
+                                                handleUserSave(review.id);
+                                                setIsMenuOpen(false);
+                                            }}
+                                            className="w-full text-left px-4 py-2 text-yellow-500 hover:bg-gray-100 flex items-center gap-2"
+                                        >
+                                            <Bookmark size={16} /> Save Review
+                                        </button>
+                                        <button
+                                            onClick={() => {
+                                                handleReportReview(review.id);
+                                                setIsMenuOpen(false);
+                                            }}
+                                            className="w-full text-left px-4 py-2 text-red-500 hover:bg-gray-100 flex items-center gap-2"
+                                        >
+                                            <Flag size={16} /> Report
+                                        </button>
+                                    </>
                                 )}
-                                {userId && (
+                                {userId && isRepost && userId !== review.userId && (
                                     <button
                                         onClick={() => {
                                             handleReportReview(review.id);

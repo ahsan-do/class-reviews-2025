@@ -1,6 +1,6 @@
 "use client";
 import { useState, useEffect, useRef } from 'react';
-import { Heart, Smile, AlertCircle, Frown, Flame, Filter, Loader2 } from 'lucide-react';
+import { Heart, Laugh, AlertCircle, Frown, Flame, Filter, Loader2 } from 'lucide-react';
 import Header from './components/Header';
 import ReviewForm from './components/ReviewForm';
 import Filters from './components/Filters';
@@ -10,10 +10,8 @@ import NotificationSystem from './components/NotificationSystem';
 import { useRouter } from 'next/navigation';
 import { Query } from 'appwrite';
 
-// Optional: Force dynamic rendering to avoid prerendering issues
 export const dynamic = 'force-dynamic';
 
-// Export utility functions at file level
 export const getTotalReactions = (reactions) => {
   return Object.values(reactions || {}).reduce((sum, val) => sum + val, 0);
 };
@@ -38,6 +36,7 @@ export default function Home() {
   const [sortBy, setSortBy] = useState('Recent');
   const [showForm, setShowForm] = useState(false);
   const [error, setError] = useState(null);
+  const [success, setSuccess] = useState(null); // New state for success messages
   const [isLoading, setIsLoading] = useState(false);
   const [appwrite, setAppwrite] = useState(null);
   const [isInitializing, setIsInitializing] = useState(true);
@@ -54,7 +53,7 @@ export default function Home() {
 
   const reactionIcons = {
     heart: { icon: Heart, label: 'Heartwarming', color: 'text-red-500' },
-    laugh: { icon: Smile, label: 'Funny', color: 'text-yellow-500' },
+    laugh: { icon: Laugh, label: 'Funny', color: 'text-yellow-500' },
     surprise: { icon: AlertCircle, label: 'Shocking', color: 'text-blue-500' },
     sad: { icon: Frown, label: 'Sad', color: 'text-gray-500' },
     fire: { icon: Flame, label: 'Brutally Honest', color: 'text-orange-500' },
@@ -242,7 +241,7 @@ export default function Home() {
       setReviews((prevReviews) => [newReviewObj, ...prevReviews]);
       setNewReview({ content: '', category: 'General', nickname: '', image: null });
       setShowForm(false);
-      setError(null);
+      setSuccess('Review submitted successfully!'); // Set success message
     } catch (err) {
       console.error('Error adding review:', err);
       setError('Failed to submit review. Please try again.');
@@ -257,22 +256,27 @@ export default function Home() {
       return;
     }
 
-    const review = reviews.find(r => r.id === reviewId);
-    if (!review) {
-      setError('Review not found.');
-      return;
-    }
-
-    if (review.userId === userId) {
-      setError('You cannot repost your own review.');
-      return;
-    }
-
     try {
       const { databases, ID } = appwrite;
       const user = await appwrite.account.get();
 
       if (repostId) {
+        // Fetch repost document to get originalReviewId
+        const repostDoc = await databases.getDocument(
+            process.env.NEXT_PUBLIC_APPWRITE_DATABASE_ID,
+            process.env.NEXT_PUBLIC_APPWRITE_REPOSTS_COLLECTION_ID,
+            repostId
+        );
+        const originalReviewId = repostDoc.originalReviewId;
+
+        // Fetch original review to get userId for notification
+        const originalReview = await databases.getDocument(
+            process.env.NEXT_PUBLIC_APPWRITE_DATABASE_ID,
+            process.env.NEXT_PUBLIC_APPWRITE_COLLECTION_ID,
+            originalReviewId
+        );
+        const originalUserId = originalReview.userId;
+
         // Update existing repost
         console.log('Updating existing repost with ID:', repostId);
         await databases.updateDocument(
@@ -286,12 +290,12 @@ export default function Home() {
         );
 
         // Update notification for the original author
-        if (review.userId !== userId && userId) {
+        if (originalUserId !== userId && userId) {
           const notificationData = {
-            userId: review.userId,
+            userId: originalUserId,
             type: 'repost',
             fromUserId: userId,
-            reviewId: reviewId,
+            reviewId: originalReviewId,
             message: `${user.name || user.email.split('@')[0]} updated their repost of your review${thoughts ? ' with new thoughts' : ''}`,
             read: false,
             timestamp: new Date().toISOString(),
@@ -300,7 +304,7 @@ export default function Home() {
           const existingNotifications = await databases.listDocuments(
               process.env.NEXT_PUBLIC_APPWRITE_DATABASE_ID,
               process.env.NEXT_PUBLIC_APPWRITE_NOTIFICATIONS_COLLECTION_ID,
-              [Query.equal('reviewId', reviewId), Query.equal('fromUserId', userId), Query.equal('type', 'repost')]
+              [Query.equal('reviewId', originalReviewId), Query.equal('fromUserId', userId), Query.equal('type', 'repost')]
           );
 
           if (existingNotifications.documents.length > 0) {
@@ -326,14 +330,24 @@ export default function Home() {
         ));
       } else {
         // Create new repost
+        const review = reviews.find(r => r.id === reviewId);
+        if (!review) {
+          setError('Review not found.');
+          return;
+        }
+        if (review.userId === userId) {
+          setError('You cannot repost your own review.');
+          return;
+        }
+
         console.log('Creating new repost for review ID:', reviewId, 'Thoughts:', thoughts);
         const repostData = {
           originalReviewId: reviewId,
           userId: userId,
           authorName: user.name || user.email.split('@')[0],
           thoughts: thoughts.trim(),
-          timestamp: new Date().toISOString(), // Repost creation time
-          originalTimestamp: review.timestamp, // Preserve original review timestamp
+          timestamp: new Date().toISOString(),
+          originalTimestamp: review.timestamp,
           avatarUrl: review.avatarUrl || 'https://via.placeholder.com/50?text=U',
           content: review.content,
           category: review.category,
@@ -395,7 +409,7 @@ export default function Home() {
       }
 
       setReposts(prev => [...prev].sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp)));
-      setError('Review repost handled successfully!');
+      setSuccess('Reposted successfully!'); // Set success message
     } catch (err) {
       console.error('Error reposting review:', err);
       setError('Failed to repost review. Please try again.');
@@ -528,7 +542,7 @@ export default function Home() {
               authorName: doc.nickname,
               thoughts: doc.thoughts,
               timestamp: timestamp,
-              originalTimestamp: new Date(doc.$createdAt), // Ensure originalTimestamp is set
+              originalTimestamp: new Date(doc.$createdAt),
               avatarUrl: doc.avatarUrl || 'https://via.placeholder.com/50?text=U',
               content: doc.content,
               category: doc.category,
@@ -580,7 +594,7 @@ export default function Home() {
           reviewId
       );
       setReviews(reviews.filter((r) => r.id !== reviewId));
-      setError(null);
+      setSuccess('Review deleted successfully!'); // Set success message
     } catch (err) {
       console.error('Error deleting review:', err);
       setError('Failed to delete review. Please try again.');
@@ -607,7 +621,7 @@ export default function Home() {
           repostId
       );
       setReposts(reposts.filter((r) => r.id !== repostId));
-      setError(null);
+      setSuccess('Repost deleted successfully!'); // Set success message
     } catch (err) {
       console.error('Error deleting repost:', err);
       setError('Failed to delete repost. Please try again.');
@@ -618,28 +632,63 @@ export default function Home() {
 
   const handleSaveReview = async (reviewId) => {
     const review = reviews.find((r) => r.id === reviewId);
+    if (!review) {
+      console.error('Review not found:', reviewId);
+      return;
+    }
+
     if (review.userId !== userId) {
+      console.error('You can only save your own reviews.');
       setError('You can only save your own reviews.');
       return;
     }
+
     try {
-      await appwrite.databases.createDocument(
+      const { databases, Query, ID } = appwrite;
+
+      const existingDrafts = await databases.listDocuments(
           process.env.NEXT_PUBLIC_APPWRITE_DATABASE_ID,
           process.env.NEXT_PUBLIC_APPWRITE_DRAFTS_COLLECTION_ID,
-          appwrite.ID.unique(),
-          {
-            reviewId: review.id,
-            content: review.content,
-            category: review.category,
-            nickname: review.nickname,
-            imageUrl: review.imageUrl,
-            userId: userId,
-            timestamp: new Date().toISOString(),
-          }
+          [
+            Query.equal('userId', userId),
+            Query.equal('reviewId', reviewId),
+          ]
       );
-      setError('Review saved as draft.');
+
+      const draftData = {
+        content: review.content,
+        category: review.category,
+        nickname: review.nickname,
+        imageUrl: review.imageUrl,
+        timestamp: new Date().toISOString(),
+      };
+
+      if (existingDrafts.documents.length > 0) {
+        const draftId = existingDrafts.documents[0].$id;
+        await databases.updateDocument(
+            process.env.NEXT_PUBLIC_APPWRITE_DATABASE_ID,
+            process.env.NEXT_PUBLIC_APPWRITE_DRAFTS_COLLECTION_ID,
+            draftId,
+            draftData
+        );
+        console.log('Draft updated successfully');
+        setSuccess('Review draft updated.'); // Set success message
+      } else {
+        await databases.createDocument(
+            process.env.NEXT_PUBLIC_APPWRITE_DATABASE_ID,
+            process.env.NEXT_PUBLIC_APPWRITE_DRAFTS_COLLECTION_ID,
+            ID.unique(),
+            {
+              reviewId: review.id,
+              userId: userId,
+              ...draftData,
+            }
+        );
+        console.log('Draft created successfully');
+        setSuccess('Review saved as draft.'); // Set success message
+      }
     } catch (err) {
-      console.error('Error saving review:', err);
+      console.error('Error saving review as draft:', err);
       setError('Failed to save review. Please try again.');
     }
   };
@@ -656,7 +705,7 @@ export default function Home() {
           appwrite.ID.unique(),
           { reviewId, userId, timestamp: new Date().toISOString() }
       );
-      setError('Review saved successfully.');
+      setSuccess('Review saved successfully.'); // Set success message
     } catch (err) {
       console.error('Error saving review:', err);
       setError('Failed to save review. Please try again.');
@@ -675,7 +724,7 @@ export default function Home() {
           appwrite.ID.unique(),
           { reviewId, userId, timestamp: new Date().toISOString() }
       );
-      setError('Review reported successfully.');
+      setSuccess('Review reported successfully.'); // Set success message
     } catch (err) {
       console.error('Error reporting review:', err);
       setError('Failed to report review. Please try again.');
@@ -741,6 +790,9 @@ export default function Home() {
         <div className="max-w-4xl mx-auto px-4 py-8">
           {error && (
               <div className="bg-red-100 text-red-700 px-4 py-3 rounded-xl mb-8">{error}</div>
+          )}
+          {success && (
+              <div className="bg-green-100 text-green-700 px-4 py-3 rounded-xl mb-8">{success}</div>
           )}
           <ReviewForm
               ref={formRef}
