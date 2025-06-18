@@ -1,10 +1,11 @@
-// src/app/components/ReviewList.js
 import ReviewItem from './ReviewItem';
 
 const ReviewList = ({
                         reviews,
+                        reposts,
                         reactionIcons,
                         handleReaction,
+                        handleRepost,
                         getTotalReactions,
                         getTopReaction,
                         fetchReviews,
@@ -16,15 +17,24 @@ const ReviewList = ({
                         handleSaveReview,
                         handleUserSave,
                         handleReportReview,
+                        isDeleting,
+                        onDeleteRepost,
                     }) => {
+    // Combine and sort all items
+    const allItems = [
+        ...reviews.map(review => ({ ...review, isRepost: false })),
+        ...reposts.map(repost => ({ ...repost, isRepost: true })),
+    ].sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
+
     return (
         <div className="space-y-6">
-            {reviews.map((review) => (
+            {allItems.map((item) => (
                 <ReviewItem
-                    key={review.id}
-                    review={review}
+                    key={item.id}
+                    review={item}
                     reactionIcons={reactionIcons}
                     handleReaction={handleReaction}
+                    handleRepost={handleRepost}
                     getTotalReactions={getTotalReactions}
                     getTopReaction={getTopReaction}
                     fetchReviews={fetchReviews}
@@ -36,6 +46,10 @@ const ReviewList = ({
                     handleSaveReview={handleSaveReview}
                     handleUserSave={handleUserSave}
                     handleReportReview={handleReportReview}
+                    isRepost={item.isRepost}
+                    repostData={item.isRepost ? item : null}
+                    isDeleting={isDeleting}
+                    onDeleteRepost={onDeleteRepost}
                 />
             ))}
         </div>

@@ -6,18 +6,18 @@ import ReviewForm from './components/ReviewForm';
 import Filters from './components/Filters';
 import ReviewList from './components/ReviewList';
 import Footer from './components/Footer';
+import NotificationSystem from './components/NotificationSystem';
 import { useRouter } from 'next/navigation';
+import { Query } from 'appwrite';
 
-// Optional: Force dynamic rendering to avoid prerendering issues
 export const dynamic = 'force-dynamic';
 
-// Export utility functions at file level
 export const getTotalReactions = (reactions) => {
   return Object.values(reactions || {}).reduce((sum, val) => sum + val, 0);
 };
 
 export const getTopReaction = (reactions) => {
-  if (!reactions || typeof reactions !== 'object') return null; // Safeguard against undefined/null
+  if (!reactions || typeof reactions !== 'object') return null;
   const maxReaction = Math.max(...Object.values(reactions));
   if (maxReaction === 0) return null;
   return Object.entries(reactions).find(([_, count]) => count === maxReaction)?.[0];
@@ -25,6 +25,7 @@ export const getTopReaction = (reactions) => {
 
 export default function Home() {
   const [reviews, setReviews] = useState([]);
+  const [reposts, setReposts] = useState([]);
   const [newReview, setNewReview] = useState({
     content: '',
     category: 'General',
@@ -35,10 +36,12 @@ export default function Home() {
   const [sortBy, setSortBy] = useState('Recent');
   const [showForm, setShowForm] = useState(false);
   const [error, setError] = useState(null);
+  const [success, setSuccess] = useState(null); // New state for success messages
   const [isLoading, setIsLoading] = useState(false);
   const [appwrite, setAppwrite] = useState(null);
   const [isInitializing, setIsInitializing] = useState(true);
-  const [userId, setUserId] = useState(null); // Authenticated user ID
+  const [userId, setUserId] = useState(null);
+  const [isDeleting, setIsDeleting] = useState(false);
   const isClientReady = useRef(false);
   const formRef = useRef(null);
   const router = useRouter();
@@ -82,39 +85,69 @@ export default function Home() {
 
       if (isMounted) {
         setAppwrite(appwrite);
-        setUserId(user.$id); // Set the authenticated user ID
+        setUserId(user.$id);
         setIsInitializing(false);
       }
 
       try {
         const { databases, Query } = appwrite;
-        const response = await databases.listDocuments(
+
+        const reviewsResponse = await databases.listDocuments(
             process.env.NEXT_PUBLIC_APPWRITE_DATABASE_ID,
             process.env.NEXT_PUBLIC_APPWRITE_COLLECTION_ID,
-            [Query.orderDesc('$createdAt')],
+            [Query.orderDesc('$createdAt')]
+        );
+
+        const repostsResponse = await databases.listDocuments(
+            process.env.NEXT_PUBLIC_APPWRITE_DATABASE_ID,
+            process.env.NEXT_PUBLIC_APPWRITE_REPOSTS_COLLECTION_ID,
+            [Query.orderDesc('$createdAt')]
         );
 
         if (isMounted) {
           setReviews(
-              response.documents.map((doc) => ({
+              reviewsResponse.documents.map((doc) => ({
                 id: doc.$id,
                 content: doc.content,
                 category: doc.category,
                 nickname: doc.nickname || `Anonymous_${Math.floor(Math.random() * 100)}`,
                 imageUrl: doc.imageUrl,
-                reactions: JSON.parse(doc.reaction || '{}'),
+                reactions: JSON.parse(doc.reaction || '{}') || { heart: 0, laugh: 0, surprise: 0, sad: 0, fire: 0 },
                 timestamp: new Date(doc.$createdAt),
-                userReactions: JSON.parse(doc.userReactions || '{}'),
-                authorId: doc.userId,
-                avatarUrl: doc.avatarUrl || 'https://via.placeholder.com/50?text=U', // Add avatarUrl from document
-              })),
+                userReactions: JSON.parse(doc.userReactions || '{}') || {},
+                userId: doc.userId,
+                avatarUrl: doc.avatarUrl || 'https://via.placeholder.com/50?text=U',
+                repostCount: doc.repostCount || 0,
+              }))
           );
+
+          setReposts(
+              repostsResponse.documents.map((doc) => {
+                const timestamp = new Date(doc.$createdAt);
+                console.log('Repost fetched:', { id: doc.$id, rawTimestamp: doc.$createdAt, convertedTimestamp: timestamp });
+                return {
+                  id: doc.$id,
+                  originalReviewId: doc.originalReviewId,
+                  userId: doc.userId,
+                  thoughts: doc.thoughts,
+                  timestamp: timestamp,
+                  avatarUrl: doc.avatarUrl || 'https://via.placeholder.com/50?text=U',
+                  content: doc.content,
+                  category: doc.category,
+                  nickname: doc.nickname || `Anonymous_${Math.floor(Math.random() * 100)}`,
+                  imageUrl: doc.imageUrl,
+                  reactions: JSON.parse(doc.reactions || '{}') || { heart: 0, laugh: 0, surprise: 0, sad: 0, fire: 0 },
+                  userReactions: JSON.parse(doc.userReactions || '{}') || {},
+                };
+              })
+          );
+
           setError(null);
         }
       } catch (err) {
         if (isMounted) {
-          console.error('Error fetching reviews or initializing:', err);
-          setError('Failed to load reviews or initialize. Please try again.');
+          console.error('Error fetching data:', err);
+          setError('Failed to load data. Please try again.');
         }
       }
     };
@@ -161,7 +194,7 @@ export default function Home() {
         const uploadResponse = await storage.createFile(
             process.env.NEXT_PUBLIC_APPWRITE_BUCKET_ID,
             ID.unique(),
-            file,
+            file
         );
         imageUrl = `${process.env.NEXT_PUBLIC_APPWRITE_ENDPOINT}/storage/buckets/${process.env.NEXT_PUBLIC_APPWRITE_BUCKET_ID}/files/${uploadResponse.$id}/view?project=${process.env.NEXT_PUBLIC_APPWRITE_PROJECT_ID}`;
       } catch (err) {
@@ -172,7 +205,7 @@ export default function Home() {
       }
     }
 
-    const user = await appwrite.account.get(); // Fetch current user to get avatar
+    const user = await appwrite.account.get();
     const avatarUrl = user.prefs?.avatar || 'https://via.placeholder.com/50?text=U';
 
     const reviewData = {
@@ -180,19 +213,12 @@ export default function Home() {
       category: newReview.category,
       nickname: newReview.nickname.trim() || `Anonymous_${Math.floor(Math.random() * 100)}`,
       imageUrl,
-      avatarUrl, // Add avatarUrl to the review data
+      avatarUrl,
       reaction: JSON.stringify({ heart: 0, laugh: 0, surprise: 0, sad: 0, fire: 0 }),
       timestamp: new Date().toISOString(),
       userReactions: JSON.stringify({}),
-      userId, // Store the author’s ID
-    };
-
-    const tempReview = {
-      id: ID.unique(),
-      ...reviewData,
-      reactions: JSON.parse(reviewData.reaction),
-      userReactions: JSON.parse(reviewData.userReactions),
-      authorId: userId,
+      userId,
+      repostCount: 0,
     };
 
     try {
@@ -200,52 +226,193 @@ export default function Home() {
           process.env.NEXT_PUBLIC_APPWRITE_DATABASE_ID,
           process.env.NEXT_PUBLIC_APPWRITE_COLLECTION_ID,
           ID.unique(),
-          reviewData,
+          reviewData
       );
-      setReviews((prevReviews) => [{ id: response.$id, ...tempReview }, ...prevReviews]);
+
+      const newReviewObj = {
+        id: response.$id,
+        ...reviewData,
+        reactions: JSON.parse(reviewData.reaction),
+        userReactions: JSON.parse(reviewData.userReactions),
+        userId: userId,
+        timestamp: new Date(reviewData.timestamp),
+      };
+
+      setReviews((prevReviews) => [newReviewObj, ...prevReviews]);
       setNewReview({ content: '', category: 'General', nickname: '', image: null });
       setShowForm(false);
-      setError(null);
+      setSuccess('Review submitted successfully!'); // Set success message
     } catch (err) {
       console.error('Error adding review:', err);
       setError('Failed to submit review. Please try again.');
     } finally {
       setIsLoading(false);
-      await fetchReviews(); // Ensure the list is refreshed
     }
   };
 
-  const fetchReviews = async () => {
-    if (!appwrite) {
-      setError('Appwrite client not initialized.');
+  const handleRepost = async (reviewId, thoughts = '', repostId = null) => {
+    if (!appwrite || !userId) {
+      setError('Please log in to repost reviews.');
       return;
     }
 
-    const { databases, Query } = appwrite;
     try {
-      const response = await databases.listDocuments(
-          process.env.NEXT_PUBLIC_APPWRITE_DATABASE_ID,
-          process.env.NEXT_PUBLIC_APPWRITE_COLLECTION_ID,
-          [Query.orderDesc('$createdAt')],
-      );
-      setReviews(
-          response.documents.map((doc) => ({
-            id: doc.$id,
-            content: doc.content,
-            category: doc.category,
-            nickname: doc.nickname || `Anonymous_${Math.floor(Math.random() * 100)}`,
-            imageUrl: doc.imageUrl,
-            reactions: JSON.parse(doc.reaction || '{}'),
-            timestamp: new Date(doc.$createdAt),
-            userReactions: JSON.parse(doc.userReactions || '{}'),
-            authorId: doc.userId,
-            avatarUrl: doc.avatarUrl || 'https://via.placeholder.com/50?text=U', // Add avatarUrl from document
-          })),
-      );
-      setError(null);
+      const { databases, ID } = appwrite;
+      const user = await appwrite.account.get();
+
+      if (repostId) {
+        // Fetch repost document to get originalReviewId
+        const repostDoc = await databases.getDocument(
+            process.env.NEXT_PUBLIC_APPWRITE_DATABASE_ID,
+            process.env.NEXT_PUBLIC_APPWRITE_REPOSTS_COLLECTION_ID,
+            repostId
+        );
+        const originalReviewId = repostDoc.originalReviewId;
+
+        // Fetch original review to get userId for notification
+        const originalReview = await databases.getDocument(
+            process.env.NEXT_PUBLIC_APPWRITE_DATABASE_ID,
+            process.env.NEXT_PUBLIC_APPWRITE_COLLECTION_ID,
+            originalReviewId
+        );
+        const originalUserId = originalReview.userId;
+
+        // Update existing repost
+        console.log('Updating existing repost with ID:', repostId);
+        await databases.updateDocument(
+            process.env.NEXT_PUBLIC_APPWRITE_DATABASE_ID,
+            process.env.NEXT_PUBLIC_APPWRITE_REPOSTS_COLLECTION_ID,
+            repostId,
+            {
+              thoughts: thoughts.trim(),
+              timestamp: new Date().toISOString(),
+            }
+        );
+
+        // Update notification for the original author
+        if (originalUserId !== userId && userId) {
+          const notificationData = {
+            userId: originalUserId,
+            type: 'repost',
+            fromUserId: userId,
+            reviewId: originalReviewId,
+            message: `${user.name || user.email.split('@')[0]} updated their repost of your review${thoughts ? ' with new thoughts' : ''}`,
+            read: false,
+            timestamp: new Date().toISOString(),
+          };
+
+          const existingNotifications = await databases.listDocuments(
+              process.env.NEXT_PUBLIC_APPWRITE_DATABASE_ID,
+              process.env.NEXT_PUBLIC_APPWRITE_NOTIFICATIONS_COLLECTION_ID,
+              [Query.equal('reviewId', originalReviewId), Query.equal('fromUserId', userId), Query.equal('type', 'repost')]
+          );
+
+          if (existingNotifications.documents.length > 0) {
+            await databases.updateDocument(
+                process.env.NEXT_PUBLIC_APPWRITE_DATABASE_ID,
+                process.env.NEXT_PUBLIC_APPWRITE_NOTIFICATIONS_COLLECTION_ID,
+                existingNotifications.documents[0].$id,
+                notificationData
+            );
+          } else {
+            await databases.createDocument(
+                process.env.NEXT_PUBLIC_APPWRITE_DATABASE_ID,
+                process.env.NEXT_PUBLIC_APPWRITE_NOTIFICATIONS_COLLECTION_ID,
+                ID.unique(),
+                notificationData
+            );
+          }
+        }
+
+        // Update local reposts state
+        setReposts(prev => prev.map(r =>
+            r.id === repostId ? { ...r, thoughts: thoughts.trim(), timestamp: new Date().toISOString() } : r
+        ));
+      } else {
+        // Create new repost
+        const review = reviews.find(r => r.id === reviewId);
+        if (!review) {
+          setError('Review not found.');
+          return;
+        }
+        if (review.userId === userId) {
+          setError('You cannot repost your own review.');
+          return;
+        }
+
+        console.log('Creating new repost for review ID:', reviewId, 'Thoughts:', thoughts);
+        const repostData = {
+          originalReviewId: reviewId,
+          userId: userId,
+          authorName: user.name || user.email.split('@')[0],
+          thoughts: thoughts.trim(),
+          timestamp: new Date().toISOString(),
+          originalTimestamp: review.timestamp,
+          avatarUrl: review.avatarUrl || 'https://via.placeholder.com/50?text=U',
+          content: review.content,
+          category: review.category,
+          nickname: review.nickname || `Anonymous_${Math.floor(Math.random() * 100)}`,
+          imageUrl: review.imageUrl,
+          reactions: JSON.stringify({ heart: 0, laugh: 0, surprise: 0, sad: 0, fire: 0 }),
+          userReactions: JSON.stringify({}),
+        };
+
+        const repostResponse = await databases.createDocument(
+            process.env.NEXT_PUBLIC_APPWRITE_DATABASE_ID,
+            process.env.NEXT_PUBLIC_APPWRITE_REPOSTS_COLLECTION_ID,
+            ID.unique(),
+            repostData
+        );
+
+        // Update repost count
+        const updatedRepostCount = (review.repostCount || 0) + 1;
+        await databases.updateDocument(
+            process.env.NEXT_PUBLIC_APPWRITE_DATABASE_ID,
+            process.env.NEXT_PUBLIC_APPWRITE_COLLECTION_ID,
+            reviewId,
+            { repostCount: updatedRepostCount }
+        );
+
+        // Create notification for the original author
+        if (review.userId !== userId && userId) {
+          await databases.createDocument(
+              process.env.NEXT_PUBLIC_APPWRITE_DATABASE_ID,
+              process.env.NEXT_PUBLIC_APPWRITE_NOTIFICATIONS_COLLECTION_ID,
+              ID.unique(),
+              {
+                userId: review.userId,
+                type: 'repost',
+                fromUserId: userId,
+                reviewId: reviewId,
+                message: `${user.name || user.email.split('@')[0]} reposted your review${thoughts ? ' with thoughts' : ''}`,
+                read: false,
+                timestamp: new Date().toISOString(),
+              }
+          );
+        }
+
+        // Update local state with the new repost
+        const newRepost = {
+          id: repostResponse.$id,
+          ...repostData,
+          reactions: JSON.parse(repostData.reactions),
+          userReactions: JSON.parse(repostData.userReactions),
+        };
+        setReposts(prev => [newRepost, ...prev.filter(r => r.id !== newRepost.id)]);
+        setReviews(prev =>
+            prev.map(r =>
+                r.id === reviewId
+                    ? { ...r, repostCount: updatedRepostCount }
+                    : r
+            )
+        );
+      }
+
+      setReposts(prev => [...prev].sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp)));
+      setSuccess('Review repost handled successfully!'); // Set success message
     } catch (err) {
-      console.error('Error fetching reviews:', err);
-      setError('Failed to load reviews. Please try again.');
+      console.error('Error reposting review:', err);
+      setError('Failed to repost review. Please try again.');
     }
   };
 
@@ -255,8 +422,8 @@ export default function Home() {
       return;
     }
 
-    const { databases, Query } = appwrite;
-    const review = reviews.find((r) => r.id === reviewId);
+    const { databases } = appwrite;
+    const review = reviews.find((r) => r.id === reviewId) || reposts.find((r) => r.id === reviewId);
     const userReactions = review.userReactions;
     const userReactionCount = Object.keys(userReactions).filter((uid) => uid === userId).length;
 
@@ -286,25 +453,116 @@ export default function Home() {
         ...userReactions,
         [userId]: reactionType,
       });
+
+      // Create notification for reaction
+      if (review.userId !== userId && userId) {
+        const user = await appwrite.account.get();
+        await databases.createDocument(
+            process.env.NEXT_PUBLIC_APPWRITE_DATABASE_ID,
+            process.env.NEXT_PUBLIC_APPWRITE_NOTIFICATIONS_COLLECTION_ID,
+            appwrite.ID.unique(),
+            {
+              userId: review.userId,
+              type: 'reaction',
+              fromUserId: userId,
+              reviewId: reviewId,
+              message: `${user.name || user.email.split('@')[0]} reacted to your review`,
+              read: false,
+              timestamp: new Date().toISOString(),
+            }
+        );
+      }
     }
 
     try {
+      const isRepost = reposts.find((r) => r.id === reviewId);
+      const collectionId = isRepost
+          ? process.env.NEXT_PUBLIC_APPWRITE_REPOSTS_COLLECTION_ID
+          : process.env.NEXT_PUBLIC_APPWRITE_COLLECTION_ID;
+
       await databases.updateDocument(
           process.env.NEXT_PUBLIC_APPWRITE_DATABASE_ID,
-          process.env.NEXT_PUBLIC_APPWRITE_COLLECTION_ID,
+          collectionId,
           reviewId,
-          updates,
+          updates
       );
-      await fetchReviews();
+      const updatedReview = { ...review, reactions: JSON.parse(updates[`reaction`]), userReactions: JSON.parse(updates[`userReactions`]) };
+      if (isRepost) {
+        setReposts(prev => prev.map(r => r.id === reviewId ? updatedReview : r).sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp)));
+      } else {
+        setReviews(prev => prev.map(r => r.id === reviewId ? updatedReview : r));
+      }
     } catch (err) {
       console.error('Error updating reaction:', err);
       setError('Failed to add reaction. Please try again.');
     }
   };
 
+  const fetchReviews = async () => {
+    if (!appwrite) {
+      setError('Appwrite client not initialized.');
+      return;
+    }
+
+    const { databases, Query } = appwrite;
+    try {
+      const response = await databases.listDocuments(
+          process.env.NEXT_PUBLIC_APPWRITE_DATABASE_ID,
+          process.env.NEXT_PUBLIC_APPWRITE_COLLECTION_ID,
+          [Query.orderDesc('$createdAt')]
+      );
+      const repostsResponse = await databases.listDocuments(
+          process.env.NEXT_PUBLIC_APPWRITE_DATABASE_ID,
+          process.env.NEXT_PUBLIC_APPWRITE_REPOSTS_COLLECTION_ID,
+          [Query.orderDesc('$createdAt')]
+      );
+      setReviews(
+          response.documents.map((doc) => ({
+            id: doc.$id,
+            content: doc.content,
+            category: doc.category,
+            nickname: doc.nickname || `Anonymous_${Math.floor(Math.random() * 100)}`,
+            imageUrl: doc.imageUrl,
+            reactions: JSON.parse(doc.reaction || '{}') || { heart: 0, laugh: 0, surprise: 0, sad: 0, fire: 0 },
+            timestamp: new Date(doc.$createdAt),
+            userReactions: JSON.parse(doc.userReactions || '{}') || {},
+            userId: doc.userId,
+            avatarUrl: doc.avatarUrl || 'https://via.placeholder.com/50?text=U',
+            repostCount: doc.repostCount || 0,
+          }))
+      );
+      setReposts(
+          repostsResponse.documents.map((doc) => {
+            const timestamp = new Date(doc.$createdAt);
+            console.log('Repost fetched:', { id: doc.$id, rawTimestamp: doc.$createdAt, convertedTimestamp: timestamp });
+            return {
+              id: doc.$id,
+              originalReviewId: doc.originalReviewId,
+              userId: doc.userId,
+              authorName: doc.nickname,
+              thoughts: doc.thoughts,
+              timestamp: timestamp,
+              originalTimestamp: new Date(doc.$createdAt),
+              avatarUrl: doc.avatarUrl || 'https://via.placeholder.com/50?text=U',
+              content: doc.content,
+              category: doc.category,
+              nickname: doc.nickname || `Anonymous_${Math.floor(Math.random() * 100)}`,
+              imageUrl: doc.imageUrl,
+              reactions: JSON.parse(doc.reactions || '{}') || { heart: 0, laugh: 0, surprise: 0, sad: 0, fire: 0 },
+              userReactions: JSON.parse(doc.userReactions || '{}') || {},
+            };
+          })
+      );
+      setError(null);
+    } catch (err) {
+      console.error('Error fetching reviews:', err);
+      setError('Failed to load reviews. Please try again.');
+    }
+  };
+
   const handleEditReview = async (reviewId) => {
     const review = reviews.find((r) => r.id === reviewId);
-    if (review.authorId !== userId) {
+    if (review.userId !== userId) {
       setError('You can only edit your own reviews.');
       return;
     }
@@ -315,7 +573,7 @@ export default function Home() {
       image: review.imageUrl ? { name: 'existing', type: 'image/jpeg' } : null,
     });
     setShowForm(true);
-    formRef.current.scrollIntoView({ behavior: 'smooth' });
+    formRef.current?.scrollIntoView({ behavior: 'smooth' });
   };
 
   const handleDeleteReview = async (reviewId) => {
@@ -324,48 +582,113 @@ export default function Home() {
       return;
     }
     const review = reviews.find((r) => r.id === reviewId);
-    if (review.authorId !== userId) {
+    if (review.userId !== userId) {
       setError('You can only delete your own reviews.');
       return;
     }
+    setIsDeleting(true);
     try {
       await appwrite.databases.deleteDocument(
           process.env.NEXT_PUBLIC_APPWRITE_DATABASE_ID,
           process.env.NEXT_PUBLIC_APPWRITE_COLLECTION_ID,
-          reviewId,
+          reviewId
       );
       setReviews(reviews.filter((r) => r.id !== reviewId));
-      setError(null);
+      setSuccess('Review deleted successfully!'); // Set success message
     } catch (err) {
       console.error('Error deleting review:', err);
       setError('Failed to delete review. Please try again.');
+    } finally {
+      setIsDeleting(false);
+    }
+  };
+
+  const handleDeleteRepost = async (repostId) => {
+    if (!appwrite || !userId) {
+      setError('Appwrite client or user not initialized.');
+      return;
+    }
+    const repost = reposts.find((r) => r.id === repostId);
+    if (repost.userId !== userId) {
+      setError('You can only delete your own reposts.');
+      return;
+    }
+    setIsDeleting(true);
+    try {
+      await appwrite.databases.deleteDocument(
+          process.env.NEXT_PUBLIC_APPWRITE_DATABASE_ID,
+          process.env.NEXT_PUBLIC_APPWRITE_REPOSTS_COLLECTION_ID,
+          repostId
+      );
+      setReposts(reposts.filter((r) => r.id !== repostId));
+      setSuccess('Repost deleted successfully!'); // Set success message
+    } catch (err) {
+      console.error('Error deleting repost:', err);
+      setError('Failed to delete repost. Please try again.');
+    } finally {
+      setIsDeleting(false);
     }
   };
 
   const handleSaveReview = async (reviewId) => {
     const review = reviews.find((r) => r.id === reviewId);
-    if (review.authorId !== userId) {
+    if (!review) {
+      console.error('Review not found:', reviewId);
+      return;
+    }
+
+    if (review.userId !== userId) {
+      console.error('You can only save your own reviews.');
       setError('You can only save your own reviews.');
       return;
     }
+
     try {
-      await appwrite.databases.createDocument(
+      const { databases, Query, ID } = appwrite;
+
+      const existingDrafts = await databases.listDocuments(
           process.env.NEXT_PUBLIC_APPWRITE_DATABASE_ID,
           process.env.NEXT_PUBLIC_APPWRITE_DRAFTS_COLLECTION_ID,
-          appwrite.ID.unique(),
-          {
-            reviewId: review.id,
-            content: review.content,
-            category: review.category,
-            nickname: review.nickname,
-            imageUrl: review.imageUrl,
-            userId: userId,
-            timestamp: new Date().toISOString(),
-          },
+          [
+            Query.equal('userId', userId),
+            Query.equal('reviewId', reviewId),
+          ]
       );
-      setError('Review saved as draft.');
+
+      const draftData = {
+        content: review.content,
+        category: review.category,
+        nickname: review.nickname,
+        imageUrl: review.imageUrl,
+        timestamp: new Date().toISOString(),
+      };
+
+      if (existingDrafts.documents.length > 0) {
+        const draftId = existingDrafts.documents[0].$id;
+        await databases.updateDocument(
+            process.env.NEXT_PUBLIC_APPWRITE_DATABASE_ID,
+            process.env.NEXT_PUBLIC_APPWRITE_DRAFTS_COLLECTION_ID,
+            draftId,
+            draftData
+        );
+        console.log('Draft updated successfully');
+        setSuccess('Review draft updated.'); // Set success message
+      } else {
+        await databases.createDocument(
+            process.env.NEXT_PUBLIC_APPWRITE_DATABASE_ID,
+            process.env.NEXT_PUBLIC_APPWRITE_DRAFTS_COLLECTION_ID,
+            ID.unique(),
+            {
+              reviewId: review.id,
+              userId: userId,
+              ...draftData,
+            }
+        );
+        console.log('Draft created successfully');
+        setSuccess('Review saved as draft.'); // Set success message
+      }
     } catch (err) {
-      console.error('Error saving review:', err);
+      console.error('Error saving review as draft:', err);
       setError('Failed to save review. Please try again.');
     }
   };
@@ -380,9 +703,9 @@ export default function Home() {
           process.env.NEXT_PUBLIC_APPWRITE_DATABASE_ID,
           process.env.NEXT_PUBLIC_APPWRITE_SAVED_COLLECTION_ID,
           appwrite.ID.unique(),
-          { reviewId, userId, timestamp: new Date().toISOString() },
+          { reviewId, userId, timestamp: new Date().toISOString() }
       );
-      setError('Review saved successfully.');
+      setSuccess('Review saved successfully.'); // Set success message
     } catch (err) {
       console.error('Error saving review:', err);
       setError('Failed to save review. Please try again.');
@@ -399,9 +722,9 @@ export default function Home() {
           process.env.NEXT_PUBLIC_APPWRITE_DATABASE_ID,
           process.env.NEXT_PUBLIC_APPWRITE_REPORTS_COLLECTION_ID,
           appwrite.ID.unique(),
-          { reviewId, userId, timestamp: new Date().toISOString() },
+          { reviewId, userId, timestamp: new Date().toISOString() }
       );
-      setError('Review reported successfully.');
+      setSuccess('Review reported successfully.'); // Set success message
     } catch (err) {
       console.error('Error reporting review:', err);
       setError('Failed to report review. Please try again.');
@@ -409,17 +732,32 @@ export default function Home() {
   };
 
   const getFilteredAndSortedReviews = () => {
-    let filtered = filter === 'All' ? reviews : reviews.filter((review) => review.category === filter);
+    let filteredReviews = filter === 'All' ? [...reviews] : reviews.filter((item) => item.category === filter);
+    let filteredReposts = filter === 'All' ? [...reposts] : reposts.filter((item) => item.category === filter);
+
     if (sortBy === 'Popular') {
-      filtered = filtered.sort((a, b) => {
+      filteredReviews = filteredReviews.sort((a, b) => {
+        const aTotal = getTotalReactions(a.reactions);
+        const bTotal = getTotalReactions(b.reactions);
+        return bTotal - aTotal;
+      });
+      filteredReposts = filteredReposts.sort((a, b) => {
         const aTotal = getTotalReactions(a.reactions);
         const bTotal = getTotalReactions(b.reactions);
         return bTotal - aTotal;
       });
     } else {
-      filtered = filtered.sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
+      filteredReviews = filteredReviews.sort((a, b) => {
+        console.log('Sorting reviews:', { aId: a.id, aTimestamp: a.timestamp, bId: b.id, bTimestamp: b.timestamp });
+        return new Date(b.timestamp) - new Date(a.timestamp);
+      });
+      filteredReposts = filteredReposts.sort((a, b) => {
+        console.log('Sorting reposts:', { aId: a.id, aTimestamp: a.timestamp, bId: b.id, bTimestamp: b.timestamp });
+        return new Date(b.timestamp) - new Date(a.timestamp);
+      });
     }
-    return filtered;
+
+    return { filteredReviews, filteredReposts };
   };
 
   useEffect(() => {
@@ -439,11 +777,23 @@ export default function Home() {
     );
   }
 
+  const { filteredReviews, filteredReposts } = getFilteredAndSortedReviews();
+
   return (
       <div className="min-h-screen bg-gradient-to-br from-indigo-50 via-white to-purple-50">
-        <Header showForm={showForm} setShowForm={setShowForm} />
+        <Header
+            showForm={showForm}
+            setShowForm={setShowForm}
+            userId={userId}
+            NotificationComponent={() => userId && <NotificationSystem userId={userId} />}
+        />
         <div className="max-w-4xl mx-auto px-4 py-8">
-          {error && <div className="bg-red-100 text-red-700 px-4 py-3 rounded-xl mb-8">{error}</div>}
+          {error && (
+              <div className="bg-red-100 text-red-700 px-4 py-3 rounded-xl mb-8">{error}</div>
+          )}
+          {success && (
+              <div className="bg-green-100 text-green-700 px-4 py-3 rounded-xl mb-8">{success}</div>
+          )}
           <ReviewForm
               ref={formRef}
               showForm={showForm}
@@ -454,13 +804,17 @@ export default function Home() {
               setShowForm={setShowForm}
               setError={setError}
               isLoading={isLoading}
-              className={`transition-all duration-300 ${showForm ? 'opacity-100 h-auto' : 'opacity-0 h-0 overflow-hidden'}`}
+              className={`transition-all duration-300 ${
+                  showForm ? 'opacity-100 h-auto' : 'opacity-0 h-0 overflow-hidden'
+              }`}
           />
           <Filters filter={filter} setFilter={setFilter} sortBy={sortBy} setSortBy={setSortBy} />
           <ReviewList
-              reviews={getFilteredAndSortedReviews()}
+              reviews={filteredReviews}
+              reposts={filteredReposts}
               reactionIcons={reactionIcons}
               handleReaction={handleReaction}
+              handleRepost={handleRepost}
               getTotalReactions={getTotalReactions}
               getTopReaction={getTopReaction}
               fetchReviews={fetchReviews}
@@ -472,8 +826,10 @@ export default function Home() {
               handleSaveReview={handleSaveReview}
               handleUserSave={handleUserSave}
               handleReportReview={handleReportReview}
+              isDeleting={isDeleting}
+              onDeleteRepost={handleDeleteRepost}
           />
-          {getFilteredAndSortedReviews().length === 0 && !isInitializing && (
+          {filteredReviews.length === 0 && filteredReposts.length === 0 && !isInitializing && (
               <div className="text-center py-16">
                 <div className="w-16 h-16 bg-gray-100 rounded-full flex items-center justify-center mx-auto mb-4">
                   <Filter size={24} className="text-gray-400" />
