@@ -13,8 +13,6 @@ const NotificationSystem = ({ userId }) => {
     const { databases } = useAppwrite(); // Remove Query from destructuring since we import it directly
 
     // Fetch notifications
-    // ... (previous imports and state remain unchanged)
-
     const fetchNotifications = async () => {
         if (!databases || !userId) return;
 
@@ -50,8 +48,6 @@ const NotificationSystem = ({ userId }) => {
             setIsLoading(false);
         }
     };
-
-// ... (rest of the file remains unchanged)
 
     // Mark notification as read
     const markAsRead = async (notificationId) => {
@@ -157,7 +153,7 @@ const NotificationSystem = ({ userId }) => {
         const interval = setInterval(fetchNotifications, 30000); // Poll every 30 seconds
 
         return () => clearInterval(interval);
-    }, [userId, databases, fetchNotifications]); // Added fetchNotifications
+    }, [userId, databases]);
 
     return (
         <div className="relative">
@@ -176,86 +172,95 @@ const NotificationSystem = ({ userId }) => {
 
             {/* Notification Dropdown */}
             {isOpen && (
-                <div className="absolute right-0 mt-2 w-80 bg-white border border-gray-200 rounded-lg shadow-lg z-50 max-h-96 overflow-hidden">
-                    {/* Header */}
-                    <div className="flex items-center justify-between p-4 border-b border-gray-100">
-                        <h3 className="font-semibold text-gray-800">Notifications</h3>
-                        <div className="flex items-center gap-2">
-                            {unreadCount > 0 && (
-                                <button
-                                    onClick={markAllAsRead}
-                                    className="text-xs text-blue-500 hover:text-blue-700"
-                                >
-                                    Mark all read
-                                </button>
-                            )}
-                            <button
-                                onClick={() => setIsOpen(false)}
-                                className="text-gray-500 hover:text-gray-700"
-                            >
-                                <X size={16} />
-                            </button>
-                        </div>
-                    </div>
+                <>
+                    {/* Mobile Overlay */}
+                    <div
+                        className="fixed inset-0 bg-transparent z-40 sm:hidden"
+                        onClick={() => setIsOpen(false)}
+                    />
 
-                    {/* Notifications List */}
-                    <div className="max-h-80 overflow-y-auto">
-                        {isLoading ? (
-                            <div className="p-4 text-center text-gray-500">
-                                Loading notifications...
-                            </div>
-                        ) : notifications.length === 0 ? (
-                            <div className="p-4 text-center text-gray-500">
-                                No notifications yet
-                            </div>
-                        ) : (
-                            notifications.map((notification) => (
-                                <div
-                                    key={notification.id}
-                                    className={`p-4 border-b border-gray-50 hover:bg-gray-50 transition-colors ${
-                                        !notification.read ? 'bg-blue-50' : ''
-                                    }`}
+                    {/* Dropdown */}
+                    <div className="absolute right-0 sm:right-0 -left-32 sm:left-auto mt-2 w-80 max-w-[calc(100vw-2rem)] bg-white border border-gray-200 rounded-lg shadow-lg z-50 max-h-96 overflow-hidden">
+                        {/* Header */}
+                        <div className="flex items-center justify-between p-4 border-b border-gray-100">
+                            <h3 className="font-semibold text-gray-800">Notifications</h3>
+                            <div className="flex items-center gap-2">
+                                {unreadCount > 0 && (
+                                    <button
+                                        onClick={markAllAsRead}
+                                        className="text-xs text-blue-500 hover:text-blue-700"
+                                    >
+                                        Mark all read
+                                    </button>
+                                )}
+                                <button
+                                    onClick={() => setIsOpen(false)}
+                                    className="text-gray-500 hover:text-gray-700"
                                 >
-                                    <div className="flex items-start gap-3">
-                                        <div className="flex-shrink-0 mt-1">
-                                            {getNotificationIcon(notification.type)}
-                                        </div>
-                                        <div className="flex-1 min-w-0">
-                                            <p className="text-sm text-gray-800">
-                                                <span className="font-medium">{notification.nickname}</span>
-                                                {' '}
-                                                {notification.type === 'reaction' && 'reacted to your review'}
-                                                {notification.type === 'repost' && 'reposted your review'}
-                                                {notification.type === 'comment' && 'commented on your review'}
-                                            </p>
-                                            <p className="text-xs text-gray-500 mt-1">
-                                                {formatTimestamp(notification.timestamp)}
-                                            </p>
-                                        </div>
-                                        <div className="flex items-center gap-1">
-                                            {!notification.read && (
+                                    <X size={16} />
+                                </button>
+                            </div>
+                        </div>
+
+                        {/* Notifications List */}
+                        <div className="max-h-80 overflow-y-auto">
+                            {isLoading ? (
+                                <div className="p-4 text-center text-gray-500">
+                                    Loading notifications...
+                                </div>
+                            ) : notifications.length === 0 ? (
+                                <div className="p-4 text-center text-gray-500">
+                                    No notifications yet
+                                </div>
+                            ) : (
+                                notifications.map((notification) => (
+                                    <div
+                                        key={notification.id}
+                                        className={`p-4 border-b border-gray-50 hover:bg-gray-50 transition-colors ${
+                                            !notification.read ? 'bg-blue-50' : ''
+                                        }`}
+                                    >
+                                        <div className="flex items-start gap-3">
+                                            <div className="flex-shrink-0 mt-1">
+                                                {getNotificationIcon(notification.type)}
+                                            </div>
+                                            <div className="flex-1 min-w-0">
+                                                <p className="text-sm text-gray-800">
+                                                    <span className="font-medium">{notification.nickname}</span>
+                                                    {' '}
+                                                    {notification.type === 'reaction' && 'reacted to your review'}
+                                                    {notification.type === 'repost' && 'reposted your review'}
+                                                    {notification.type === 'comment' && 'commented on your review'}
+                                                </p>
+                                                <p className="text-xs text-gray-500 mt-1">
+                                                    {formatTimestamp(notification.timestamp)}
+                                                </p>
+                                            </div>
+                                            <div className="flex items-center gap-1">
+                                                {!notification.read && (
+                                                    <button
+                                                        onClick={() => markAsRead(notification.id)}
+                                                        className="text-blue-500 hover:text-blue-700"
+                                                        title="Mark as read"
+                                                    >
+                                                        <Check size={14} />
+                                                    </button>
+                                                )}
                                                 <button
-                                                    onClick={() => markAsRead(notification.id)}
-                                                    className="text-blue-500 hover:text-blue-700"
-                                                    title="Mark as read"
+                                                    onClick={() => deleteNotification(notification.id)}
+                                                    className="text-gray-400 hover:text-red-500"
+                                                    title="Delete notification"
                                                 >
-                                                    <Check size={14} />
+                                                    <X size={14} />
                                                 </button>
-                                            )}
-                                            <button
-                                                onClick={() => deleteNotification(notification.id)}
-                                                className="text-gray-400 hover:text-red-500"
-                                                title="Delete notification"
-                                            >
-                                                <X size={14} />
-                                            </button>
+                                            </div>
                                         </div>
                                     </div>
-                                </div>
-                            ))
-                        )}
+                                ))
+                            )}
+                        </div>
                     </div>
-                </div>
+                </>
             )}
         </div>
     );

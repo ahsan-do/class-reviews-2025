@@ -43,55 +43,58 @@ export default function Header({ showForm, setShowForm, userId, NotificationComp
     return (
         <div className="bg-white/80 backdrop-blur-sm border-b border-gray-200 sticky top-0 z-10">
             <div className="max-w-4xl mx-auto px-4 py-6">
-                <div className="flex flex-col md:flex-row items-center justify-between">
+                <div className="flex flex-col space-y-4">
                     {/* Logo/Title Section */}
-                    <div className="mb-4 md:mb-0 flex items-center space-x-3">
-                        <div className="w-8 h-8 bg-gradient-to-br from-indigo-500 to-purple-600 rounded-lg flex items-center justify-center">
-                            <span className="text-white font-bold text-sm">R</span>
-                        </div>
-                        <div>
-                            <h1 className="text-3xl font-bold bg-gradient-to-r from-indigo-600 to-purple-600 bg-clip-text text-transparent">
+                    <div className="flex items-center justify-center md:justify-start space-x-3">
+
+                        <div className="text-center md:text-left">
+                            <h1 className="text-2xl md:text-3xl font-bold bg-gradient-to-r from-indigo-600 to-purple-600 bg-clip-text text-transparent">
                                 BSCS 2021-2025
                             </h1>
-                            <p className="text-gray-600 mt-1">Share your journey, connect anonymously</p>
+                            <p className="text-gray-600 mt-1 text-sm md:text-base">Share your journey, connect anonymously</p>
                         </div>
                     </div>
 
                     {/* Actions Section */}
-                    <div className="flex flex-col md:flex-row space-y-4 md:space-y-0 md:space-x-4 items-center">
-                        {/* Notification System */}
-                        {NotificationComponent && <NotificationComponent />}
+                    <div className="flex flex-col sm:flex-row space-y-3 sm:space-y-0 sm:space-x-4 items-center justify-center md:justify-end w-full">
+                        {/* Notification System - Centered on mobile */}
+                        <div className="flex justify-center sm:justify-start">
+                            {NotificationComponent && <NotificationComponent />}
+                        </div>
 
-                        {/* New Review/Share Story Button */}
-                        <button
-                            onClick={handleShareClick}
-                            className={`flex items-center gap-2 px-6 py-3 rounded-full font-semibold transition-all duration-200 md:min-w-0 md:w-auto ${
-                                showForm
-                                    ? 'bg-gradient-to-r from-red-500 to-red-600 hover:shadow-lg text-white'
-                                    : 'bg-gradient-to-r from-indigo-500 to-purple-500 hover:shadow-lg text-white'
-                            }`}
-                        >
-                            {showForm ? (
-                                <>
-                                    <X size={20} />
-                                    <span className="hidden sm:inline">Cancel</span>
-                                </>
-                            ) : (
-                                <>
-                                    <Plus size={20} />
-                                    <span className="hidden sm:inline">Share Your Story</span>
-                                </>
-                            )}
-                        </button>
+                        {/* Action Buttons Container */}
+                        <div className="flex flex-col sm:flex-row space-y-3 sm:space-y-0 sm:space-x-4 items-center justify-center sm:justify-start md:justify-end">
+                            {/* New Review/Share Story Button */}
+                            <button
+                                onClick={handleShareClick}
+                                className={`flex items-center justify-center gap-2 px-6 py-3 rounded-full font-semibold transition-all duration-200 w-58 ${
+                                    showForm
+                                        ? 'bg-gradient-to-r from-red-500 to-red-600 hover:shadow-lg text-white'
+                                        : 'bg-gradient-to-r from-indigo-500 to-purple-500 hover:shadow-lg text-white'
+                                }`}
+                            >
+                                {showForm ? (
+                                    <>
+                                        <X size={20} />
+                                        <span>Cancel</span>
+                                    </>
+                                ) : (
+                                    <>
+                                        <Plus size={20} />
+                                        <span>Share Your Story</span>
+                                    </>
+                                )}
+                            </button>
 
-                        {/* Dashboard Button */}
-                        <button
-                            onClick={() => setIsDashboardOpen(true)}
-                            className="bg-gradient-to-r from-indigo-500 to-purple-500 text-white px-6 py-3 rounded-full hover:shadow-lg transition-all duration-200 flex items-center gap-2 font-semibold md:min-w-0 md:w-auto"
-                        >
-                            <User size={20} />
-                            <span className="hidden sm:inline">Dashboard</span>
-                        </button>
+                            {/* Dashboard Button */}
+                            <button
+                                onClick={() => setIsDashboardOpen(true)}
+                                className="bg-gradient-to-r from-indigo-500 to-purple-500 text-white px-6 py-3 rounded-full hover:shadow-lg transition-all duration-200 flex items-center justify-center gap-2 font-semibold w-58"
+                            >
+                                <User size={20} />
+                                <span>Dashboard</span>
+                            </button>
+                        </div>
                     </div>
                 </div>
             </div>
