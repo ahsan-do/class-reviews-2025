@@ -335,7 +335,7 @@ const ReviewItem = ({
                     <span>
             <strong>{repostData.authorName || nickname}</strong> reposted
           </span>
-                    <span>â€¢</span>
+                    <span>•</span>
                     <span>{new Date(repostData.timestamp).toLocaleDateString()}</span>
                 </div>
             )}
@@ -389,7 +389,7 @@ const ReviewItem = ({
                     editedCategory
                 )}
               </span>
-                            <span>â€¢</span>
+                            <span>•</span>
                             <span>{new Date(isRepost ? (repostData?.originalTimestamp || review.timestamp) : review.timestamp).toLocaleDateString()}</span>
                         </div>
                     </div>
@@ -460,7 +460,7 @@ const ReviewItem = ({
                                             }}
                                             className="w-full text-left px-4 py-2 text-blue-500 hover:bg-gray-100 flex items-center gap-2"
                                         >
-                                            <Pencil size={16} /> Edit Thoughts
+                                            <Pencil size={16} /> Edit
                                         </button>
                                         <button
                                             onClick={() => onDeleteRepost(repostData.id)}
@@ -474,7 +474,7 @@ const ReviewItem = ({
                                                 </>
                                             ) : (
                                                 <>
-                                                    <Trash2 size={16} /> Delete Repost
+                                                    <Trash2 size={16} /> Delete
                                                 </>
                                             )}
                                         </button>

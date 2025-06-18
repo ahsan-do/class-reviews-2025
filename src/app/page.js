@@ -1,6 +1,6 @@
 "use client";
 import { useState, useEffect, useRef } from 'react';
-import { Heart, Smile, AlertCircle, Frown, Flame, Filter, Loader2 } from 'lucide-react';
+import { Heart, Laugh, AlertCircle, Frown, Flame, Filter, Loader2 } from 'lucide-react';
 import Header from './components/Header';
 import ReviewForm from './components/ReviewForm';
 import Filters from './components/Filters';
@@ -53,7 +53,7 @@ export default function Home() {
 
   const reactionIcons = {
     heart: { icon: Heart, label: 'Heartwarming', color: 'text-red-500' },
-    laugh: { icon: Smile, label: 'Funny', color: 'text-yellow-500' },
+    laugh: { icon: Laugh, label: 'Funny', color: 'text-yellow-500' },
     surprise: { icon: AlertCircle, label: 'Shocking', color: 'text-blue-500' },
     sad: { icon: Frown, label: 'Sad', color: 'text-gray-500' },
     fire: { icon: Flame, label: 'Brutally Honest', color: 'text-orange-500' },
@@ -112,7 +112,7 @@ export default function Home() {
                 category: doc.category,
                 nickname: doc.nickname || `Anonymous_${Math.floor(Math.random() * 100)}`,
                 imageUrl: doc.imageUrl,
-                reactions: JSON.parse(doc.reaction || '{}') || { heart: 0, laugh: 0, surprise: 0, sad: 0, fire: 0 },
+                reactions: JSON.parse(doc.reactions || '{}') || { heart: 0, laugh: 0, surprise: 0, sad: 0, fire: 0 },
                 timestamp: new Date(doc.$createdAt),
                 userReactions: JSON.parse(doc.userReactions || '{}') || {},
                 userId: doc.userId,
@@ -214,7 +214,7 @@ export default function Home() {
       nickname: newReview.nickname.trim() || `Anonymous_${Math.floor(Math.random() * 100)}`,
       imageUrl,
       avatarUrl,
-      reaction: JSON.stringify({ heart: 0, laugh: 0, surprise: 0, sad: 0, fire: 0 }),
+      reactions: JSON.stringify({ heart: 0, laugh: 0, surprise: 0, sad: 0, fire: 0 }),
       timestamp: new Date().toISOString(),
       userReactions: JSON.stringify({}),
       userId,
@@ -232,7 +232,7 @@ export default function Home() {
       const newReviewObj = {
         id: response.$id,
         ...reviewData,
-        reactions: JSON.parse(reviewData.reaction),
+        reactions: JSON.parse(reviewData.reactions),
         userReactions: JSON.parse(reviewData.userReactions),
         userId: userId,
         timestamp: new Date(reviewData.timestamp),
@@ -409,7 +409,7 @@ export default function Home() {
       }
 
       setReposts(prev => [...prev].sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp)));
-      setSuccess('Review repost handled successfully!'); // Set success message
+      setSuccess('Reposted successfully!'); // Set success message
     } catch (err) {
       console.error('Error reposting review:', err);
       setError('Failed to repost review. Please try again.');
@@ -438,7 +438,7 @@ export default function Home() {
     if (currentReaction === reactionType) {
       const reactions = { ...review.reactions };
       reactions[reactionType] = Math.max(0, reactions[reactionType] - 1);
-      updates[`reaction`] = JSON.stringify(reactions);
+      updates[`reactions`] = JSON.stringify(reactions);
       const newUserReactions = { ...userReactions };
       delete newUserReactions[userId];
       updates[`userReactions`] = JSON.stringify(newUserReactions);
@@ -448,7 +448,7 @@ export default function Home() {
         reactions[currentReaction] = Math.max(0, reactions[currentReaction] - 1);
       }
       reactions[reactionType] = (reactions[reactionType] || 0) + 1;
-      updates[`reaction`] = JSON.stringify(reactions);
+      updates[`reactions`] = JSON.stringify(reactions);
       updates[`userReactions`] = JSON.stringify({
         ...userReactions,
         [userId]: reactionType,
@@ -486,7 +486,7 @@ export default function Home() {
           reviewId,
           updates
       );
-      const updatedReview = { ...review, reactions: JSON.parse(updates[`reaction`]), userReactions: JSON.parse(updates[`userReactions`]) };
+      const updatedReview = { ...review, reactions: JSON.parse(updates[`reactions`]), userReactions: JSON.parse(updates[`userReactions`]) };
       if (isRepost) {
         setReposts(prev => prev.map(r => r.id === reviewId ? updatedReview : r).sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp)));
       } else {
@@ -523,7 +523,7 @@ export default function Home() {
             category: doc.category,
             nickname: doc.nickname || `Anonymous_${Math.floor(Math.random() * 100)}`,
             imageUrl: doc.imageUrl,
-            reactions: JSON.parse(doc.reaction || '{}') || { heart: 0, laugh: 0, surprise: 0, sad: 0, fire: 0 },
+            reactions: JSON.parse(doc.reactions || '{}') || { heart: 0, laugh: 0, surprise: 0, sad: 0, fire: 0 },
             timestamp: new Date(doc.$createdAt),
             userReactions: JSON.parse(doc.userReactions || '{}') || {},
             userId: doc.userId,

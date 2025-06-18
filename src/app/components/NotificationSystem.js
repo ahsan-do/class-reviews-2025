@@ -33,6 +33,7 @@ const NotificationSystem = ({ userId }) => {
             const notificationData = response.documents.map(doc => ({
                 id: doc.$id,
                 type: doc.type,
+                nickname: doc.nickname,
                 fromUserId: doc.fromUserId,
                 reviewId: doc.reviewId,
                 repostId: doc.repostId,
@@ -222,7 +223,7 @@ const NotificationSystem = ({ userId }) => {
                                         </div>
                                         <div className="flex-1 min-w-0">
                                             <p className="text-sm text-gray-800">
-                                                <span className="font-medium">{notification.fromUserName}</span>
+                                                <span className="font-medium">{notification.nickname}</span>
                                                 {' '}
                                                 {notification.type === 'reaction' && 'reacted to your review'}
                                                 {notification.type === 'repost' && 'reposted your review'}
