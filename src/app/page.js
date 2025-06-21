@@ -95,13 +95,13 @@ export default function Home() {
         const reviewsResponse = await databases.listDocuments(
             process.env.NEXT_PUBLIC_APPWRITE_DATABASE_ID,
             process.env.NEXT_PUBLIC_APPWRITE_COLLECTION_ID,
-            [Query.orderDesc('$createdAt')]
+            [Query.orderDesc('$createdAt'), Query.limit(2000)]
         );
 
         const repostsResponse = await databases.listDocuments(
             process.env.NEXT_PUBLIC_APPWRITE_DATABASE_ID,
             process.env.NEXT_PUBLIC_APPWRITE_REPOSTS_COLLECTION_ID,
-            [Query.orderDesc('$createdAt')]
+            [Query.orderDesc('$createdAt'), Query.limit(2000)]
         );
 
         if (isMounted) {
@@ -511,12 +511,12 @@ export default function Home() {
       const response = await databases.listDocuments(
           process.env.NEXT_PUBLIC_APPWRITE_DATABASE_ID,
           process.env.NEXT_PUBLIC_APPWRITE_COLLECTION_ID,
-          [Query.orderDesc('$createdAt')]
+          [Query.orderDesc('$createdAt'), Query.limit(2000)]
       );
       const repostsResponse = await databases.listDocuments(
           process.env.NEXT_PUBLIC_APPWRITE_DATABASE_ID,
           process.env.NEXT_PUBLIC_APPWRITE_REPOSTS_COLLECTION_ID,
-          [Query.orderDesc('$createdAt')]
+          [Query.orderDesc('$createdAt'), Query.limit(2000)]
       );
       setReviews(
           response.documents.map((doc) => ({
