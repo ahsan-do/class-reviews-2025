@@ -39,12 +39,9 @@ const ReviewItem = ({
                         isDeleting,
                         onDeleteRepost,
                     }) => {
-    // Debug log to check props
     console.log('ReviewItem props:', { userId, reviewId: review.id, isRepost, repostData });
 
-    // Use repostData.authorName for reposter's name in the repost header
     const reposterName = isRepost && repostData?.authorName ? repostData.authorName : null;
-    // Use review.nickname for the original reviewer's name
     const originalNickname = review.nickname || `Anonymous_${Math.floor(Math.random() * 100)}`;
     const [isImageEnlarged, setIsImageEnlarged] = useState(false);
     const [isEditing, setIsEditing] = useState(false);
@@ -70,10 +67,11 @@ const ReviewItem = ({
     const appwriteStorage = st || storage;
     const appwriteClient = client;
 
-    // Ensure reactions is an object with default values
-    const safeReactions = review.reactions || { heart: 0, laugh: 0, surprise: 0, sad: 0, fire: 0 };
+    // Use repostData.reactions if isRepost, otherwise use review.reactions
+    const safeReactions = isRepost && repostData ? repostData.reactions || { heart: 0, laugh: 0, surprise: 0, sad: 0, fire: 0 } : review.reactions || { heart: 0, laugh: 0, surprise: 0, sad: 0, fire: 0 };
+    // Use repostData.userReactions if isRepost, otherwise use review.userReactions (for user reaction logic if needed)
+    const userReaction = isRepost && repostData ? repostData.userReactions[userId] : review.userReactions[userId];
 
-    // Fetch repost count
     useEffect(() => {
         const fetchRepostCount = async () => {
             if (!appwriteDatabases || !review.id) return;
@@ -94,7 +92,8 @@ const ReviewItem = ({
     }, [review.id, appwriteDatabases]);
 
     const handleReactionWithNotification = async (reviewId, reactionType) => {
-        await handleReaction(reviewId, reactionType);
+        const targetId = isRepost && repostData ? repostData.id : reviewId; // Use repostData.id for reposts
+        await handleReaction(targetId, reactionType);
     };
 
     const handleRepostSubmit = async (thoughts, repostId = null) => {
@@ -123,7 +122,7 @@ const ReviewItem = ({
                     const repostDoc = {
                         originalReviewId: review.id,
                         userId: userId,
-                        authorName: user.name || user.email.split('@')[0], // Reposter's name
+                        authorName: account?.name || account?.email.split('@')[0], // Reposter's name
                         thoughts: thoughts || '',
                         timestamp: new Date().toISOString(),
                         originalTimestamp: review.timestamp,
@@ -638,13 +637,13 @@ const ReviewItem = ({
                             <Icon size={16} className={`${color} group-hover:scale-110 transition-transform`} />
                             {safeReactions[key] > 0 && (
                                 <span className="text-sm font-semibold text-gray-700">
-                  {safeReactions[key]}
-                </span>
+                                    {safeReactions[key]}
+                                </span>
                             )}
                         </button>
                     ))}
                 </div>
-                {repostCount > 0 && (
+                {!isRepost && repostCount > 0 && (
                     <div className="flex items-center gap-1 text-gray-500">
                         <Repeat size={16} />
                         <span className="text-sm">{repostCount}</span>

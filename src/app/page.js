@@ -425,8 +425,14 @@ export default function Home() {
     }
 
     const { databases } = appwrite;
-    const review = reviews.find((r) => r.id === reviewId) || reposts.find((r) => r.id === reviewId);
-    const userReactions = review.userReactions;
+    const isRepost = reposts.find((r) => r.id === reviewId);
+    const item = isRepost || reviews.find((r) => r.id === reviewId);
+    if (!item) {
+      setError('Item not found.');
+      return;
+    }
+
+    const userReactions = item.userReactions;
     const userReactionCount = Object.keys(userReactions).filter((uid) => uid === userId).length;
 
     if (userReactionCount >= 5) {
@@ -438,14 +444,14 @@ export default function Home() {
     const updates = {};
 
     if (currentReaction === reactionType) {
-      const reactions = { ...review.reactions };
+      const reactions = { ...item.reactions };
       reactions[reactionType] = Math.max(0, reactions[reactionType] - 1);
       updates[`reactions`] = JSON.stringify(reactions);
       const newUserReactions = { ...userReactions };
       delete newUserReactions[userId];
       updates[`userReactions`] = JSON.stringify(newUserReactions);
     } else {
-      const reactions = { ...review.reactions };
+      const reactions = { ...item.reactions };
       if (currentReaction) {
         reactions[currentReaction] = Math.max(0, reactions[currentReaction] - 1);
       }
@@ -457,18 +463,18 @@ export default function Home() {
       });
 
       // Create notification for reaction
-      if (review.userId !== userId && userId) {
+      if (item.userId !== userId && userId) {
         const user = await appwrite.account.get();
         await databases.createDocument(
             process.env.NEXT_PUBLIC_APPWRITE_DATABASE_ID,
             process.env.NEXT_PUBLIC_APPWRITE_NOTIFICATIONS_COLLECTION_ID,
             appwrite.ID.unique(),
             {
-              userId: review.userId,
+              userId: item.userId,
               type: 'reaction',
               fromUserId: userId,
               reviewId: reviewId,
-              message: `${user.name || user.email.split('@')[0]} reacted to your review`,
+              message: `${user.name || user.email.split('@')[0]} reacted to your ${isRepost ? 'repost' : 'review'}`,
               read: false,
               timestamp: new Date().toISOString(),
             }
@@ -477,7 +483,6 @@ export default function Home() {
     }
 
     try {
-      const isRepost = reposts.find((r) => r.id === reviewId);
       const collectionId = isRepost
           ? process.env.NEXT_PUBLIC_APPWRITE_REPOSTS_COLLECTION_ID
           : process.env.NEXT_PUBLIC_APPWRITE_COLLECTION_ID;
@@ -488,11 +493,13 @@ export default function Home() {
           reviewId,
           updates
       );
-      const updatedReview = { ...review, reactions: JSON.parse(updates[`reactions`]), userReactions: JSON.parse(updates[`userReactions`]) };
+      const updatedItem = { ...item, reactions: JSON.parse(updates[`reactions`]), userReactions: JSON.parse(updates[`userReactions`]) };
       if (isRepost) {
-        setReposts(prev => prev.map(r => r.id === reviewId ? updatedReview : r).sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp)));
+        setReposts((prev) =>
+            prev.map((r) => (r.id === reviewId ? updatedItem : r)).sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp))
+        );
       } else {
-        setReviews(prev => prev.map(r => r.id === reviewId ? updatedReview : r));
+        setReviews((prev) => prev.map((r) => (r.id === reviewId ? updatedItem : r)));
       }
     } catch (err) {
       console.error('Error updating reaction:', err);
